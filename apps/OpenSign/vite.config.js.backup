@@ -13,13 +13,7 @@ export default defineConfig(({ mode }) => {
       react(),
       svgr() // Transform SVGs into React components
     ],
-    resolve: { 
-      alias: {
-        // Fix for Parse SDK Emitter issue with Vite
-        'events': resolve(__dirname, 'node_modules/eventemitter3/index.js'),
-        'eventemitter3': resolve(__dirname, 'node_modules/eventemitter3/index.js')
-      }
-    },
+    resolve: { alias: {} }, // Add any necessary aliases here
     define: {
       // Replace process.env.REACT_APP_* with import.meta.env.VITE_*
       "process.env": Object.entries(env).reduce((acc, [key, value]) => {
@@ -46,9 +40,6 @@ export default defineConfig(({ mode }) => {
       environment: "jsdom",
       globals: true,
       setupFiles: "./setuptest.js" // if you have one
-    },
-    optimizeDeps: {
-      include: ['eventemitter3', 'parse']
     }
   };
 });
