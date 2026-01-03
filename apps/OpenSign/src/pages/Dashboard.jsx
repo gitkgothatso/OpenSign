@@ -16,7 +16,8 @@ const Dashboard = () => {
   const [loading, setloading] = useState(true);
 
   useEffect(() => {
-    if (localStorage.getItem("accesstoken")) {
+    // Check for JWT token instead of accesstoken
+    if (localStorage.getItem("jwtToken")) {
       if (id !== undefined) {
         getDashboard(id);
       } else {
