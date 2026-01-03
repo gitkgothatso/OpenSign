@@ -3,7 +3,7 @@ import dp from "../assets/images/dp.png";
 import FullScreenButton from "./FullScreenButton";
 import ThemeToggle from "./ThemeToggle";
 import { useNavigate } from "react-router";
-import authService from "../services/authService";
+import Parse from "parse";
 import { useWindowSize } from "../hook/useWindowSize";
 import {
   getAppLogo,
@@ -64,7 +64,7 @@ const Header = ({ isConsole, setIsLoggingOut }) => {
     setIsOpen(false);
     setIsLoggingOut(true);
     try {
-      authService.logout();
+      await Parse.User.logOut();
     } catch (err) {
       console.log("Err while logging out", err);
     } finally {

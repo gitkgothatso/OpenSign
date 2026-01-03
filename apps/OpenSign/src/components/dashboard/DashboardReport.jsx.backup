@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from "react";
-import authService from "../../services/authService";
+import Parse from "parse";
 import DocumentsReport from "../../reports/document/DocumentsReport";
 import reportJson from "../../json/ReportJson";
 import axios from "axios";
@@ -110,7 +110,7 @@ function DashboardReport(props) {
       setActions(json.actions);
       setReportName(json.reportName);
       setHeading(json.heading);
-      const currentUser = authService.getUserId();
+      const currentUser = Parse.User.current().id;
 
       const headers = {
         "Content-Type": "application/json",
