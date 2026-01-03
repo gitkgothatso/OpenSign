@@ -44,21 +44,17 @@ const HomeLayout = () => {
     const jwtToken = localStorage.getItem("jwtToken");
     
     if (jwtToken) {
-      if (!tenantId) {
-        dispatch(sessionStatus(false));
-      } else {
-        // JWT token exists and tenantId is set, user is valid
-        dispatch(sessionStatus(true));
-        setIsLoader(false);
-      }
+      // JWT token exists, user is valid
+      dispatch(sessionStatus(true));
+      setIsLoader(false);
     } else {
       // No JWT token, check for old Parse session to convert
       const accesstoken = localStorage.getItem("accesstoken");
-      if (accesstoken) {
-        // User has old Parse session, try to convert it
+      if (accesstoken && tenantId) {
+        // User has old Parse session with tenantId, try to convert it
         console.log("Old Parse session detected, please log in again");
         dispatch(sessionStatus(false));
-      } else {
+      } else if (!accesstoken) {
         // No session at all
         dispatch(sessionStatus(false));
       }
