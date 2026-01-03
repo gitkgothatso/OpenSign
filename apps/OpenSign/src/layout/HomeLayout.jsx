@@ -40,30 +40,27 @@ const HomeLayout = () => {
   }, []);
 
   useEffect(() => {
-    if (localStorage.getItem("accesstoken")) {
+    // Check for JWT token instead of Parse accesstoken
+    const jwtToken = localStorage.getItem("jwtToken");
+    
+    if (jwtToken) {
       if (!tenantId) {
         dispatch(sessionStatus(false));
       } else {
-        (async () => {
-          try {
-            // Use the session token to validate the user
-            const userQuery = new Parse.Query(Parse.User);
-            const user = await userQuery.get(Parse?.User?.current()?.id, {
-              sessionToken: localStorage.getItem("accesstoken")
-            });
-            if (user) {
-              localStorage.setItem("profileImg", user.get("ProfilePic") || "");
-                dispatch(sessionStatus(true));
-                setIsLoader(false);
-            } else {
-              dispatch(sessionStatus(true));
-            }
-          } catch (error) {
-            console.error("error in authentication:", error?.message);
-            // Session token is invalid or there was an error
-            dispatch(sessionStatus(false));
-          }
-        })();
+        // JWT token exists and tenantId is set, user is valid
+        dispatch(sessionStatus(true));
+        setIsLoader(false);
+      }
+    } else {
+      // No JWT token, check for old Parse session to convert
+      const accesstoken = localStorage.getItem("accesstoken");
+      if (accesstoken) {
+        // User has old Parse session, try to convert it
+        console.log("Old Parse session detected, please log in again");
+        dispatch(sessionStatus(false));
+      } else {
+        // No session at all
+        dispatch(sessionStatus(false));
       }
     }
 
