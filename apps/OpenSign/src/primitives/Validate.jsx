@@ -1,37 +1,37 @@
 import { useState, useEffect } from "react";
-import Parse from "parse";
 import { Outlet } from "react-router";
 import SessionExpiredModal from "./SessionExpiredModal";
+import authService from "../services/authService";
 
 const Validate = () => {
   const [isUserValid, setIsUserValid] = useState(true);
+  
   useEffect(() => {
     (async () => {
-      if (localStorage.getItem("accesstoken")) {
-        try {
-          const userDetails = JSON.parse(
-            localStorage.getItem(
-              `Parse/${localStorage.getItem("parseAppId")}/currentUser`
-            )
-          );
-          // Use the session token to validate the user
-          const userQuery = new Parse.Query(Parse.User);
-          const user = await userQuery.get(userDetails?.objectId, {
-            sessionToken: localStorage.getItem("accesstoken")
-          });
-          if (user) {
+      // Check if user has JWT token
+      const jwtToken = localStorage.getItem("jwtToken");
+      
+      if (jwtToken) {
+        // JWT token exists, user is valid
+        setIsUserValid(true);
+      } else {
+        // No JWT token, check if there's an old Parse session to convert
+        const accessToken = localStorage.getItem("accesstoken");
+        if (accessToken) {
+          try {
+            // Try to convert old Parse session to JWT
+            await authService.convertSession(accessToken);
             setIsUserValid(true);
-          } else {
+          } catch (error) {
+            console.error("Session conversion failed:", error);
             setIsUserValid(false);
           }
-        } catch (error) {
-          // Session token is invalid or there was an error
+        } else {
+          // No tokens at all, session expired
           setIsUserValid(false);
         }
       }
     })();
-
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return isUserValid ? <Outlet /> : <SessionExpiredModal />;
