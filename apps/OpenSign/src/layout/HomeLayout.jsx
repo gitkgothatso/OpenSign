@@ -16,6 +16,7 @@ import Loader from "../primitives/Loader";
 import { useTranslation } from "react-i18next";
 import { sessionStatus } from "../redux/reducers/userReducer";
 import SessionExpiredModal from "../primitives/SessionExpiredModal";
+import userService from "../services/userService";
 
 const HomeLayout = () => {
   const appName =
@@ -152,15 +153,19 @@ const HomeLayout = () => {
   };
 
   async function checkTourStatus() {
-    const cloudRes = await Parse.Cloud.run("getUserDetails");
-    if (cloudRes) {
-      const extUser = JSON.parse(JSON.stringify(cloudRes));
-      localStorage.setItem("Extand_Class", JSON.stringify([extUser]));
-      const tourStatus = extUser?.TourStatus || [];
-      setTourStatusArr(tourStatus);
-      const loginTour = tourStatus.find((obj) => obj.loginTour)?.loginTour;
-      setIsTour(!loginTour);
-    } else {
+    try {
+      const extUser = await userService.getCurrentUser();
+      if (extUser) {
+        localStorage.setItem("Extand_Class", JSON.stringify([extUser]));
+        const tourStatus = extUser?.TourStatus || [];
+        setTourStatusArr(tourStatus);
+        const loginTour = tourStatus.find((obj) => obj.loginTour)?.loginTour;
+        setIsTour(!loginTour);
+      } else {
+        setIsTour(true);
+      }
+    } catch (error) {
+      console.error("Error checking tour status:", error);
       setIsTour(true);
     }
   }
