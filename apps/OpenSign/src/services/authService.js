@@ -89,6 +89,11 @@ export const authService = {
     };
   },
 
+  // Get user ID
+  getUserId: () => {
+    return localStorage.getItem('userId');
+  },
+
   // Check if user is authenticated
   isAuthenticated: () => {
     return !!localStorage.getItem('jwtToken');
