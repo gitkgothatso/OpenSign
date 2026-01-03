@@ -182,11 +182,11 @@ function Login() {
       // Check extended class user role and tenentId
       try {
         const userSettings = appInfo.settings;
-        const extUser = await Parse.Cloud.run("getUserDetails");
+        const extUser = await userService.getCurrentUser();
         if (extUser) {
-          const IsDisabled = extUser?.get("IsDisabled") || false;
+          const IsDisabled = extUser?.IsDisabled || false;
           if (!IsDisabled) {
-            const userRole = extUser?.get("UserRole");
+            const userRole = extUser?.UserRole;
             const menu =
               userRole && userSettings.find((menu) => menu.role === userRole);
             if (menu) {
@@ -194,7 +194,7 @@ function Login() {
               const redirectUrl =
                 location?.state?.from || `/${menu.pageType}/${menu.pageId}`;
               const _role = _currentRole.replace("contracts_", "");
-              const extInfo = JSON.parse(JSON.stringify(extUser));
+              const extInfo = extUser;
               localStorage.setItem("_user_role", _role);
               localStorage.setItem("Extand_Class", JSON.stringify([extUser]));
               localStorage.setItem("userEmail", extInfo?.Email);
@@ -242,16 +242,16 @@ function Login() {
       const _user = user.toJSON();
       setLocalVar(_user);
       const userSettings = appInfo.settings;
-      const extUser = await Parse.Cloud.run("getUserDetails");
+      const extUser = await userService.getCurrentUser();
       if (extUser) {
-        const IsDisabled = extUser?.get("IsDisabled") || false;
+        const IsDisabled = extUser?.IsDisabled || false;
         if (!IsDisabled) {
-          const userRole = extUser.get("UserRole");
+          const userRole = extUser.UserRole;
           const _currentRole = userRole;
           const menu =
             userRole && userSettings.find((menu) => menu.role === userRole);
           if (menu) {
-            const extInfo = JSON.parse(JSON.stringify(extUser));
+            const extInfo = extUser;
             const _role = _currentRole.replace("contracts_", "");
             localStorage.setItem("_user_role", _role);
             const redirectUrl =
@@ -369,11 +369,11 @@ function Login() {
   const continueLoginFlow = async () => {
     try {
       const userSettings = appInfo.settings;
-      const extUser = await Parse.Cloud.run("getUserDetails");
+      const extUser = await userService.getCurrentUser();
       if (extUser) {
-        const IsDisabled = extUser?.get("IsDisabled") || false;
+        const IsDisabled = extUser?.IsDisabled || false;
         if (!IsDisabled) {
-          const userRole = extUser?.get("UserRole");
+          const userRole = extUser?.UserRole;
           const menu =
             userRole && userSettings?.find((menu) => menu.role === userRole);
           if (menu) {
@@ -382,11 +382,11 @@ function Login() {
               location?.state?.from || `/${menu.pageType}/${menu.pageId}`;
             const _role = _currentRole.replace("contracts_", "");
             localStorage.setItem("_user_role", _role);
-            const checkLanguage = extUser?.get("Language");
+            const checkLanguage = extUser?.Language;
             if (checkLanguage) {
               checkLanguage && i18n.changeLanguage(checkLanguage);
             }
-            const extInfo = JSON.parse(JSON.stringify(extUser));
+            const extInfo = extUser;
             // Continue with storing user data and redirecting
             localStorage.setItem("Extand_Class", JSON.stringify([extUser]));
             localStorage.setItem("userEmail", extInfo.Email);
