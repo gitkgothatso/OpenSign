@@ -411,6 +411,9 @@ function Login() {
               localStorage.setItem("TenantId", tenant?.Id);
               dispatch(showTenant(tenant?.Name));
               localStorage.setItem("TenantName", tenant?.Name);
+            } else {
+              // Set empty TenantId if user doesn't have one
+              localStorage.setItem("TenantId", "");
             }
             localStorage.setItem("PageLanding", menu.pageId);
             localStorage.setItem("defaultmenuid", menu.menuId);
