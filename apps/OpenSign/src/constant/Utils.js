@@ -2575,28 +2575,34 @@ export const getFileName = (fileUrl) => {
 
 //fetch tenant app logo from `partners_Tenant` class by domain name
 export const getAppLogo = async () => {
-  const domain = window.location.host;
-  try {
-    const tenant = await Parse.Cloud.run("getlogobydomain", {
-      domain: domain
-    });
-    if (tenant) {
-      localStorage.setItem("appname", "OpenSign™");
-      localStorage.setItem("favicon", appInfo.fev_Icon);
-      return {
-        logo: tenant?.logo,
-        user: tenant?.user
-      };
-    }
-  } catch (err) {
-    console.log("err in getlogo ", err);
-    localStorage.setItem("favicon", appInfo.fev_Icon);
-    if (err?.message?.includes("valid JSON")) {
-      return { logo: appInfo.applogo, user: "exist", error: "invalid_json" };
-    } else {
-      return { logo: appInfo.applogo, user: "exist" };
-    }
-  }
+  // TODO: Implement tenant logo API in Java backend
+  // For now, return default logo
+  localStorage.setItem("appname", "OpenSign™");
+  localStorage.setItem("favicon", appInfo.fev_Icon);
+  return { logo: appInfo.applogo, user: "exist" };
+  
+  // const domain = window.location.host;
+  // try {
+  //   const tenant = await Parse.Cloud.run("getlogobydomain", {
+  //     domain: domain
+  //   });
+  //   if (tenant) {
+  //     localStorage.setItem("appname", "OpenSign™");
+  //     localStorage.setItem("favicon", appInfo.fev_Icon);
+  //     return {
+  //       logo: tenant?.logo,
+  //       user: tenant?.user
+  //     };
+  //   }
+  // } catch (err) {
+  //   console.log("err in getlogo ", err);
+  //   localStorage.setItem("favicon", appInfo.fev_Icon);
+  //   if (err?.message?.includes("valid JSON")) {
+  //     return { logo: appInfo.applogo, user: "exist", error: "invalid_json" };
+  //   } else {
+  //     return { logo: appInfo.applogo, user: "exist" };
+  //   }
+  // }
 };
 export const getTenantDetails = async (objectId, contactId) => {
   try {
