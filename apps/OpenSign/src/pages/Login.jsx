@@ -59,7 +59,7 @@ function Login() {
 
 
   const setLocalVar = (user) => {
-    localStorage.setItem("accesstoken", user.sessionToken);
+    // localStorage.setItem("accesstoken", user.sessionToken); // Deprecated: Using jwtToken now
     localStorage.setItem("UserInformation", JSON.stringify(user));
     localStorage.setItem("userEmail", user.email);
     if (user.ProfilePic) {
@@ -174,7 +174,7 @@ function Login() {
       }
     });
     await Parse.User.become(sessionToken).then(() => {
-      window.localStorage.setItem("accesstoken", sessionToken);
+      // window.localStorage.setItem("accesstoken", sessionToken); // Deprecated: Using jwtToken now
     });
     if (res.data) {
       let _user = res.data;
