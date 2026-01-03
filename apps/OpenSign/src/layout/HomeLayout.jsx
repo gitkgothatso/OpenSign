@@ -165,7 +165,7 @@ const HomeLayout = () => {
     }
   }
 
-  return isValidSession && localStorage.getItem("accesstoken") ? (
+  return isValidSession ? (
     <div className="flex flex-col h-screen overflow-hidden">
       {/* HEADER */}
       <header className="z-[501]">
