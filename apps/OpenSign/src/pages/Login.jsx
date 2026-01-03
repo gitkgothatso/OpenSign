@@ -369,17 +369,29 @@ function Login() {
   const continueLoginFlow = async () => {
     try {
       const userSettings = appInfo.settings;
+      console.log("Fetching user details...");
       const extUser = await userService.getCurrentUser();
+      console.log("User details received:", extUser);
+      
       if (extUser) {
         const IsDisabled = extUser?.IsDisabled || false;
+        console.log("User IsDisabled:", IsDisabled);
+        
         if (!IsDisabled) {
           const userRole = extUser?.UserRole;
+          console.log("User role:", userRole);
+          console.log("Available settings:", userSettings);
+          
           const menu =
             userRole && userSettings?.find((menu) => menu.role === userRole);
+          console.log("Found menu:", menu);
+          
           if (menu) {
             const _currentRole = userRole;
             const redirectUrl =
               location?.state?.from || `/${menu.pageType}/${menu.pageId}`;
+            console.log("Redirect URL:", redirectUrl);
+            
             const _role = _currentRole.replace("contracts_", "");
             localStorage.setItem("_user_role", _role);
             const checkLanguage = extUser?.Language;
@@ -389,8 +401,8 @@ function Login() {
             const extInfo = extUser;
             // Continue with storing user data and redirecting
             localStorage.setItem("Extand_Class", JSON.stringify([extUser]));
-            localStorage.setItem("userEmail", extInfo.Email);
-            localStorage.setItem("username", extInfo.Name);
+            localStorage.setItem("userEmail", extInfo.Email || extInfo.email);
+            localStorage.setItem("username", extInfo.Name || extInfo.name);
             if (extInfo?.TenantId) {
               const tenant = {
                 Id: extInfo?.TenantId?.objectId || "",
@@ -403,9 +415,11 @@ function Login() {
             localStorage.setItem("PageLanding", menu.pageId);
             localStorage.setItem("defaultmenuid", menu.menuId);
             localStorage.setItem("pageType", menu.pageType);
-              setState({ ...state, loading: false });
-              navigate(redirectUrl);
+            setState({ ...state, loading: false });
+            console.log("Navigating to:", redirectUrl);
+            navigate(redirectUrl);
           } else {
+            console.error("No menu found for role:", userRole);
             setState({ ...state, loading: false });
             setIsModal(true);
           }
@@ -420,6 +434,7 @@ function Login() {
     } catch (error) {
       console.error("Error during login flow", error);
       showToast("danger", error.message || t("something-went-wrong-mssg"));
+      setState({ ...state, loading: false });
     }
   };
 
