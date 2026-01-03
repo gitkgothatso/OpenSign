@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import Parse from "parse";
 import Loader from "../primitives/Loader";
 import {
   copytoData,
@@ -11,6 +10,10 @@ import {
 import {
   useTranslation
 } from "react-i18next";
+import teamService from "../services/teamService";
+import userService from "../services/userService";
+import apiClient from "../config/api";
+
 function generatePassword(length) {
   const characters =
     "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
@@ -42,30 +45,37 @@ const AddUser = (props) => {
   }, []);
 
   const getTeamList = async () => {
-    setFormdata((prev) => ({ ...prev, password: generatePassword(12) }));
-    const teamRes = await Parse.Cloud.run("getteams", { active: true });
-    if (teamRes.length > 0) {
-      const _teamRes = JSON.parse(JSON.stringify(teamRes));
-      setTeamList(_teamRes);
-        const allUserId =
-          _teamRes.find((x) => x.Name === "All Users")?.objectId || "";
-        setFormdata((prev) => ({ ...prev, team: allUserId }));
-    }
-  };
-  const checkUserExist = async () => {
     try {
-      const res = await Parse.Cloud.run("getUserDetails", {
-        email: formdata.email
-      });
-      if (res) {
-        return true;
-      } else {
-        return false;
+      setFormdata((prev) => ({ ...prev, password: generatePassword(12) }));
+      // Use new Java backend team service
+      const teamRes = await teamService.getAll();
+      if (teamRes.length > 0) {
+        setTeamList(teamRes);
+        const allUserId =
+          teamRes.find((x) => x.name === "All Users")?.objectId || "";
+        setFormdata((prev) => ({ ...prev, team: allUserId }));
       }
     } catch (err) {
-      console.log("err", err);
+      console.error("Error fetching teams:", err);
+      props.showAlert("danger", t("something-went-wrong-mssg"));
     }
   };
+
+  const checkUserExist = async () => {
+    try {
+      // Use new Java backend user service to check by email
+      const user = await userService.getUserByEmail(formdata.email);
+      return !!user; // Return true if user exists
+    } catch (err) {
+      // 404 means user not found - that's expected
+      if (err.response?.status === 404) {
+        return false;
+      }
+      console.error("Error checking user existence:", err);
+      throw err;
+    }
+  };
+
   // Define a function to handle form submission
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -75,70 +85,92 @@ const AddUser = (props) => {
     } else {
       const localUser = JSON.parse(localStorage.getItem("Extand_Class"))?.[0];
       setIsFormLoader(true);
-      const res = await checkUserExist();
-      if (res) {
-        props.showAlert("danger", t("user-already-exist"));
-        setIsFormLoader(false);
-      } else {
-        if (localStorage.getItem("TenantId")) {
-          const timezone = usertimezone;
-          try {
-            const params = {
-              name: formdata.name,
-              email: formdata.email,
-              phone: formdata.phone,
-              password: formdata.password,
-              role: formdata.role,
-              team: formdata.team,
-              timezone: timezone,
-              tenantId: localStorage.getItem("TenantId"),
-              organization: {
-                objectId: localUser?.OrganizationId?.objectId,
-                company: localUser?.Company
-              },
-            };
-            const res = await Parse.Cloud.run("adduser", params);
-            const parseData = JSON.parse(JSON.stringify(res));
-            if (props.closePopup) {
-              props.closePopup();
-            }
-            if (props.handleUserData) {
-              if (formdata?.team) {
-                const team = teamList.find((x) => x.objectId === formdata.team);
-                parseData.TeamIds = parseData.TeamIds.map((y) =>
-                  y.objectId === team.objectId ? team : y
-                );
+      try {
+        const userExists = await checkUserExist();
+        if (userExists) {
+          props.showAlert("danger", t("user-already-exist"));
+          setIsFormLoader(false);
+        } else {
+          if (localStorage.getItem("TenantId")) {
+            const timezone = usertimezone;
+            try {
+              const params = {
+                name: formdata.name,
+                email: formdata.email,
+                phone: formdata.phone,
+                password: formdata.password,
+                role: formdata.role,
+                team: formdata.team,
+                timezone: timezone,
+                tenantId: localStorage.getItem("TenantId"),
+                organization: {
+                  objectId: localUser?.OrganizationId?.objectId,
+                  company: localUser?.Company
+                },
+              };
+              
+              // Use new Java backend API to create user
+              const response = await apiClient.post('/users', params);
+              const parseData = response.data;
+              
+              if (props.closePopup) {
+                props.closePopup();
               }
-              props.handleUserData(parseData);
+              if (props.handleUserData) {
+                if (formdata?.team) {
+                  const team = teamList.find((x) => x.objectId === formdata.team);
+                  if (team) {
+                    parseData.TeamIds = parseData.TeamIds?.map((y) =>
+                      y.objectId === team.objectId ? team : y
+                    ) || [team];
+                  }
+                }
+                props.handleUserData(parseData);
+              }
+              setIsFormLoader(false);
+              setFormdata({
+                name: "",
+                email: "",
+                phone: "",
+                team: "",
+                role: "",
+                password: generatePassword(12)
+              });
+              props.showAlert("success", t("user-created-successfully"));
+            } catch (err) {
+              console.error("Error creating user:", err);
+              setIsFormLoader(false);
+              const errorMsg = err.response?.data?.error || t("something-went-wrong-mssg");
+              props.showAlert("danger", errorMsg);
             }
-            setIsFormLoader(false);
-            setFormdata({
-              name: "",
-              email: "",
-              phone: "",
-              team: "",
-              role: ""
-            });
-            props.showAlert("success", t("user-created-successfully"));
-          } catch (err) {
-            console.log("err", err);
+          } else {
             setIsFormLoader(false);
             props.showAlert("danger", t("something-went-wrong-mssg"));
           }
-        } else {
-          props.showAlert("danger", t("something-went-wrong-mssg"));
         }
+      } catch (err) {
+        console.error("Error in form submission:", err);
+        setIsFormLoader(false);
+        props.showAlert("danger", t("something-went-wrong-mssg"));
       }
     }
   };
 
   // Define a function to handle the "add yourself" checkbox
   const handleReset = () => {
-    setFormdata({ name: "", email: "", phone: "", team: "", role: "" });
+    setFormdata({ 
+      name: "", 
+      email: "", 
+      phone: "", 
+      team: "", 
+      role: "",
+      password: generatePassword(12)
+    });
     if (props.closePopup) {
       props.closePopup();
     }
   };
+
   const handleChange = (event) => {
     let { name, value } = event.target;
     if (name === "email") {
@@ -151,6 +183,7 @@ const AddUser = (props) => {
     copytoData(text);
     props.showAlert("success", t("copied"));
   };
+
   return (
     <div className="shadow-md rounded-box my-[1px] p-3 bg-base-100 relative">
       {isFormLoader && (
@@ -208,8 +241,8 @@ const AddUser = (props) => {
                         <label className="block text-xs font-semibold">
                           {t("password")}
                         </label>
-                        <div className="flex justify-between items-center op-input op-input-bordered op-input-sm text-base-content w-full h-full text-[13px]">
-                          <div className="break-all">{formdata?.password}</div>
+                        <div className="flex justify-between items-center op-input op-input-bordered op-input-sm text-base-content w-full 
+h-full text-[13px]">                                                                                                                                                <div className="break-all">{formdata?.password}</div>
                           <i
                             onClick={() => copytoclipboard(formdata?.password)}
                             className="fa-light fa-copy rounded-full hover:bg-base-300 p-[8px] cursor-pointer "
@@ -247,8 +280,8 @@ const AddUser = (props) => {
                           value={formdata.role}
                           onChange={(e) => handleChange(e)}
                           name="role"
-                          className="op-select op-select-bordered op-select-sm focus:outline-none hover:border-base-content w-full text-xs"
-                          onInvalid={(e) =>
+                          className="op-select op-select-bordered op-select-sm focus:outline-none hover:border-base-content w-full text-xs
+"                                                                                                                                                                   onInvalid={(e) =>
                             e.target.setCustomValidity(t("input-required"))
                           }
                           onInput={(e) => e.target.setCustomValidity("")}
