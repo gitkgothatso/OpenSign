@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import Parse from "parse";
+import authService from "../services/authService";
+import userService from "../services/userService";
 import { useDispatch } from "react-redux";
 import axios from "axios";
 import { NavLink, useNavigate, useLocation } from "react-router";
@@ -100,38 +102,52 @@ function Login() {
     setState({ ...state, [name]: value });
   };
 
-  const handleLogin = async (
-  ) => {
-    const email = state?.email
-    const password = state?.password
+  const handleLogin = async () => {
+    const email = state?.email;
+    const password = state?.password;
 
     if (!email || !password) {
       return;
     }
+    
     localStorage.removeItem("accesstoken");
     try {
       setState({ ...state, loading: true });
       localStorage.setItem("appLogo", appInfo.applogo);
-      const _user = await Parse.Cloud.run("loginuser", { email, password });
-      if (!_user) {
+      
+      // Use new Java backend authentication
+      const authResponse = await authService.login(email, password);
+      
+      if (!authResponse) {
         setState({ ...state, loading: false });
         return;
       }
-      // Get extended user data (including 2FA status) using cloud function
+      
+      // Store auth data (already done by authService.login)
+      // Get user details
       try {
-        await Parse.User.become(_user.sessionToken);
-        setLocalVar(_user);
+        const userDetails = await userService.getCurrentUser();
+        setLocalVar({
+          sessionToken: authResponse.jwtToken,
+          email: authResponse.email,
+          ProfilePic: userDetails.profilePic || ""
+        });
         await continueLoginFlow();
       } catch (error) {
-        console.error("Error checking 2FA status:", error);
+        console.error("Error fetching user details:", error);
         showToast("danger", t("something-went-wrong-mssg"));
       }
     } catch (error) {
       console.error("Error while logging in user", error);
-      if (error?.code === 1001) {
+      const errorCode = error.response?.data?.code;
+      const errorMsg = error.response?.data?.error;
+      
+      if (errorCode === 1001) {
         showToast("danger", t("action-prohibited"));
-      } else {
+      } else if (errorCode === 101 || errorCode === 205) {
         showToast("danger", t("invalid-username-password-region"));
+      } else {
+        showToast("danger", errorMsg || t("something-went-wrong-mssg"));
       }
     }
   };
