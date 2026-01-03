@@ -298,41 +298,44 @@ function Login() {
     e.preventDefault();
     if (userDetails.Destination && userDetails.Company) {
       setThirdpartyLoader(true);
-      const payload = { sessionToken: localStorage.getItem("accesstoken") };
       const userInformation = JSON.parse(
         localStorage.getItem("UserInformation")
       );
-      if (payload && payload.sessionToken) {
-        const params = {
-          userDetails: {
-            name: userInformation.name,
-            email: userInformation.email,
-            phone: userInformation?.phone || "",
-            role: "contracts_User",
-            company: userDetails.Company,
-            jobTitle: userDetails.Destination,
-            timezone: usertimezone
-          }
-        };
-        const userSignUp = await Parse.Cloud.run("usersignup", params);
-        if (userSignUp && userSignUp.sessionToken) {
+      
+      try {
+        // Use authService.signup instead of Parse.Cloud.run
+        const userSignUp = await authService.signup(
+          userInformation.email, // username (using email)
+          userInformation.email,
+          Math.random().toString(36).slice(-12), // temporary password for OAuth users
+          userInformation.name,
+          userInformation?.phone || "",
+          userDetails.Company,
+          userDetails.Destination, // jobTitle
+          "contracts_User",
+          usertimezone
+        );
+        
+        if (userSignUp && userSignUp.jwtToken) {
           const LocalUserDetails = {
             name: userInformation.name,
             email: userInformation.email,
             phone: userInformation?.phone || "",
             company: userDetails.Company,
-            jobTitle: userDetails.JobTitle
+            jobTitle: userDetails.Destination
           };
           localStorage.setItem("userDetails", JSON.stringify(LocalUserDetails));
-          thirdpartyLoginfn(userSignUp.sessionToken);
+          
+          // Continue login flow with the user data
+          await continueLoginFlow();
         } else {
-          alert(userSignUp.message);
+          alert(userSignUp.message || t("signup-failed"));
         }
-      } else if (
-        payload &&
-        payload.message.replace(/ /g, "_") === "Internal_server_err"
-      ) {
-        alert(t("server-error"));
+      } catch (error) {
+        console.error("Signup error:", error);
+        alert(error.response?.data?.message || t("server-error"));
+      } finally {
+        setThirdpartyLoader(false);
       }
     } else {
       showToast("warning", t("fill-required-details!"));

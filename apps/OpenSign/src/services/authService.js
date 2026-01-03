@@ -2,13 +2,18 @@
 import apiClient from '../config/api';
 
 export const authService = {
-  // Sign up new user
-  signup: async (username, email, password, name) => {
+  // Sign up new user with extended profile fields
+  signup: async (username, email, password, name, phone, company, jobTitle, role, timezone) => {
     const response = await apiClient.post('/auth/signup', {
       username,
       email,
       password,
-      name
+      name,
+      phone: phone || '',
+      company: company || '',
+      jobTitle: jobTitle || '',
+      role: role || 'contracts_User',
+      timezone: timezone || ''
     });
     
     const { jwtToken, userId, username: user, email: userEmail } = response.data;
