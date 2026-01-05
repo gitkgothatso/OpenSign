@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from "react";
 import Parse from "parse";
 import axios from "axios";
-import reportService from "../services/reportService";
+import { reportService } from "../services/reportService";
 import reportJson, { extraCols } from "../json/ReportJson";
 import { useParams } from "react-router";
 import PageNotFound from "./PageNotFound";

@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from "react";
 import authService from "../../services/authService";
-import reportService from "../../services/reportService";
+import { reportService } from "../../services/reportService";
 import DocumentsReport from "../../reports/document/DocumentsReport";
 import reportJson from "../../json/ReportJson";
 import axios from "axios";
