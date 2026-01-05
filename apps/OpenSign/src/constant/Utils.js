@@ -15,6 +15,7 @@ import pdfService from "../services/pdfService";
 import signatureService from "../services/signatureService";
 import documentService from "../services/documentService";
 import contactService from "../services/contactService";
+import emailService from "../services/emailService";
 
 export const fontsizeArr = [2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28];
 export const fontColorArr = ["red", "black", "blue", "yellow"];
@@ -3807,12 +3808,6 @@ export const sendEmailToSigners = async (
   }
   for (let i = 0; i < signerMail.length; i++) {
     try {
-      let url = `${localStorage.getItem("baseUrl")}functions/sendmailv3`;
-      const headers = {
-        "Content-Type": "application/json",
-        "X-Parse-Application-Id": localStorage.getItem("parseAppId"),
-        sessionToken: localStorage.getItem("accesstoken")
-      };
       const objectId = signerMail[i].objectId;
       const hostUrl = window.location.origin;
       //encode this url value `${pdfDetails?.[0].objectId}/${signerMail[i].Email}/${objectId}` to base64 using `btoa` function
@@ -3895,12 +3890,12 @@ export const sendEmailToSigners = async (
         html: replaceVar?.body ? replaceVar?.body : mailTemplate(mailparam).body
       };
 
-      sendMail = await axios.post(url, params, { headers: headers });
+      sendMail = await emailService.sendCustomEmail(params);
     } catch (error) {
       console.log("error", error);
     }
   }
-  if (sendMail?.data?.result?.status === "success") {
+  if (sendMail?.status === "success") {
     const sessiontoken = localStorage.getItem("accesstoken");
     if (pdfDetails[0]?.objectId && sessiontoken) {
       try {
