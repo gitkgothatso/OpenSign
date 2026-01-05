@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef } from "react";
 import authService from "../../services/authService";
+import reportService from "../../services/reportService";
 import DocumentsReport from "../../reports/document/DocumentsReport";
 import reportJson from "../../json/ReportJson";
 import axios from "axios";
@@ -59,18 +60,13 @@ function DashboardReport(props) {
           "X-Parse-Application-Id": localStorage.getItem("parseAppId"),
           sessiontoken: localStorage.getItem("accesstoken")
         };
-        const url = `${localStorage.getItem("baseUrl")}functions/getReport`;
-        const res = await axios.post(
-          url,
-          {
-            reportId: props.Record.reportId,
-            searchTerm: term,
-            skip: 0,
-            limit: docPerPage
-          },
-          { headers }
+        // Use reportService instead of Parse endpoint
+        const data = await reportService.getReport(
+          props.Record.reportId,
+          0,
+          docPerPage,
+          term
         );
-        const data = res.data?.result || [];
         if (!data.error) {
           setList(data);
           setIsMoreDocs(data.length >= docPerPage);
@@ -124,13 +120,15 @@ function DashboardReport(props) {
         if (term) {
           params.searchTerm = term;
         }
-        const url = `${localStorage.getItem("baseUrl")}functions/getReport`;
-        const res = await axios.post(url, params, {
-          headers: headers,
-          signal: abortController.signal // is used to cancel fetch query
-        });
+        // Use reportService instead of Parse endpoint
+        const res = await reportService.getReport(
+          params.reportId,
+          params.skip,
+          params.limit,
+          params.searchTerm || ""
+        );
         if (id === "5Go51Q7T8r") {
-          const listData = res.data?.result.filter((x) => x.Signers.length > 0);
+          const listData = res.filter((x) => x.Signers.length > 0);
           let arr = [];
           for (const obj of listData) {
             const isSigner = obj.Signers?.some(

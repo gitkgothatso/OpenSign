@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from "react";
 import Parse from "parse";
 import axios from "axios";
+import reportService from "../services/reportService";
 import reportJson, { extraCols } from "../json/ReportJson";
 import { useParams } from "react-router";
 import PageNotFound from "./PageNotFound";
@@ -86,13 +87,13 @@ const Report = () => {
           "X-Parse-Application-Id": localStorage.getItem("parseAppId"),
           sessiontoken: localStorage.getItem("accesstoken")
         };
-        const url = `${localStorage.getItem("baseUrl")}functions/getReport`;
-        const res = await axios.post(
-          url,
-          { reportId: id, searchTerm: term, skip: 0, limit: docPerPage },
-          { headers }
+        // Use reportService instead of Parse endpoint
+        const data = await reportService.getReport(
+          id,
+          0,
+          docPerPage,
+          term
         );
-        const data = res.data?.result || [];
         if (!data.error) {
           setList(data);
           setIsMoreDocs(data.length >= docPerPage);
@@ -157,11 +158,13 @@ const Report = () => {
         if (term) {
           params.searchTerm = term;
         }
-        const url = `${localStorage.getItem("baseUrl")}functions/getReport`;
-        const res = await axios.post(url, params, {
-          headers: headers,
-          signal: abortController.signal // is used to cancel fetch query
-        });
+        // Use reportService instead of Parse endpoint
+        const res = await reportService.getReport(
+          params.reportId,
+          params.skip,
+          params.limit,
+          params.searchTerm || ""
+        );
         const extraHeads =
           id === "4Hhwbp482K" ? [...extraCols, "Expiry Date"] : extraCols;
         setAllColumns(Array.from(new Set([...json.heading, ...extraHeads])));
@@ -169,7 +172,7 @@ const Report = () => {
           setTourData(templateReportTour);
         }
         if (id === "4Hhwbp482K") {
-          const listData = res.data?.result.filter((x) => x.Signers.length > 0);
+          const listData = res.filter((x) => x.Signers.length > 0);
           let arr = [];
           for (const obj of listData) {
             const isSigner = obj?.Signers?.some(

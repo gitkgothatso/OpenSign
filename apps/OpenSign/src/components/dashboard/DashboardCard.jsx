@@ -5,6 +5,8 @@ import getReplacedHashQuery from "../../constant/getReplacedHashQuery";
 import { useNavigate } from "react-router";
 import Tooltip from "../../primitives/Tooltip";
 import { useTranslation } from "react-i18next";
+import { reportService } from "../../services/reportService";
+import { authService } from "../../services/authService";
 
 const DashboardCard = (props) => {
   const navigate = useNavigate();
@@ -133,21 +135,15 @@ const DashboardCard = (props) => {
             skip: 0,
             limit: 200
           };
-          const url = `${parseBaseUrl}functions/getReport`;
-          await axios
-            .post(url, params, {
-              headers: {
-                "Content-Type": "application/json",
-                "X-Parse-Application-Id": parseAppId,
-                sessiontoken: localStorage.getItem("accesstoken")
-              }
-            })
-            .then((res) => {
-              const listData = res.data?.result?.filter(
-                (x) => x.Signers.length > 0
+          // Use reportService instead of Parse endpoint
+          await reportService
+            .getReport(params.reportId, params.skip, params.limit, "")
+            .then((listData) => {
+              const filteredData = listData?.filter(
+                (x) => x.Signers && x.Signers.length > 0
               );
               let arr = [];
-              for (const obj of listData) {
+              for (const obj of filteredData) {
                 const isSigner = obj.Signers?.some(
                   (item) => item.UserId.objectId === currentUser.id
                 );
