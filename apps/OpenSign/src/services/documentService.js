@@ -48,3 +48,13 @@ export const documentService = {
 };
 
 export default documentService;
+
+  /**
+   * Generate completion certificate for a document
+   * @param {string} docId - Document ID
+   * @returns {Promise} Certificate details with CertificateUrl
+   */
+  generateCertificate: async (docId) => {
+    const response = await apiClient.post('/documents/certificate', { docId });
+    return response.data;
+  }
