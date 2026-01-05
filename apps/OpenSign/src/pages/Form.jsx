@@ -380,6 +380,15 @@ const Forms = (props) => {
       setIsSubmit(true);
       try {
         const currentUser = Parse.User.current();
+        // Fallback to extUserData if Parse.User.current() is null (migrated from Parse auth)
+        const userId = currentUser?.id || extUserData?.UserId?.objectId;
+        
+        if (!userId) {
+          alert("User not authenticated. Please log in.");
+          setIsSubmit(false);
+          return;
+        }
+        
         const object = new Parse.Object(props.Cls);
         object.set("Name", formData?.Name);
         object.set("Description", formData?.Description);
@@ -425,7 +434,7 @@ const Forms = (props) => {
           }
         }
         object.set("URL", fileupload);
-        object.set("CreatedBy", Parse.User.createWithoutData(currentUser.id));
+        object.set("CreatedBy", Parse.User.createWithoutData(userId));
         if (folder && folder.ObjectId) {
           object.set("Folder", {
             __type: "Pointer",
