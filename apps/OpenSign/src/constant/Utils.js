@@ -17,6 +17,7 @@ import documentService from "../services/documentService";
 import contactService from "../services/contactService";
 import emailService from "../services/emailService";
 import userService from "../services/userService";
+import tenantService from "../services/tenantService";
 
 export const fontsizeArr = [2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28];
 export const fontColorArr = ["red", "black", "blue", "yellow"];
@@ -2575,20 +2576,11 @@ export const getAppLogo = async () => {
 };
 export const getTenantDetails = async (objectId, contactId) => {
   try {
-    const url = `${localStorage.getItem("baseUrl")}functions/gettenant`;
-    const parseAppId = localStorage.getItem("parseAppId");
-    const accesstoken = localStorage.getItem("accesstoken");
-    const token = { "X-Parse-Session-Token": accesstoken };
-    const data = { userId: objectId, contactId: contactId };
-    const res = await axios.post(url, data, {
-      headers: {
-        "Content-Type": "application/json",
-        "X-Parse-Application-Id": parseAppId,
-        ...token
-      }
-    });
-    if (res.data.result) {
-      const updateRes = JSON.parse(JSON.stringify(res.data.result));
+    // objectId is the tenantId in the new API
+    const tenantDetails = await tenantService.getTenantById(objectId);
+    
+    if (tenantDetails) {
+      const updateRes = JSON.parse(JSON.stringify(tenantDetails));
       return updateRes;
     } else {
       return "";
