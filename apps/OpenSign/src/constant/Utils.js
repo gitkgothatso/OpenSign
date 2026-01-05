@@ -10,6 +10,9 @@ import { themeColor } from "./const";
 import { format, toZonedTime } from "date-fns-tz";
 import i18n from "../i18n";
 import { applyNumberFormulasToPages, buildDownloadFilename } from "../utils";
+import fileService from "../services/fileService";
+import pdfService from "../services/pdfService";
+import signatureService from "../services/signatureService";
 
 export const fontsizeArr = [2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28];
 export const fontColorArr = ["red", "black", "blue", "yellow"];
@@ -106,14 +109,14 @@ export const getSecureUrl = async (url) => {
   const fileUrl = new URL(url)?.pathname?.includes("files");
   if (fileUrl) {
     try {
-      const fileRes = await Parse.Cloud.run("fileupload", { url: url });
+      const fileRes = await fileService.getSecureUrl(url);
       if (fileRes.url) {
         return { url: fileRes.url };
       } else {
         return { url: "" };
       }
     } catch (err) {
-      console.log("err while fileupload ", err);
+      console.log("err while getSecureUrl ", err);
       return { url: "" };
     }
   } else {
@@ -835,13 +838,13 @@ export const signPdfFun = async (
       isCustomCompletionMail: isCustomCompletionMail,
       signature: suffixbase64
     };
-    const resSignPdf = await Parse.Cloud.run("signPdf", params);
+    const resSignPdf = await pdfService.signPdf(params);
     if (resSignPdf) {
       const signedPdf = JSON.parse(JSON.stringify(resSignPdf));
       return signedPdf;
     }
   } catch (e) {
-    console.log("Err in signPdf cloud function ", e.message);
+    console.log("Err in signPdf ", e.message);
     if (e && e?.message?.includes("is encrypted.")) {
       return {
         status: "error",
@@ -3087,9 +3090,7 @@ export const saveLanguageInLocal = (i18n) => {
 export const getDefaultSignature = async (objectId) => {
   try {
     if (objectId) {
-      const result = await Parse.Cloud.run("getdefaultsignature", {
-        userId: objectId
-      });
+      const result = await signatureService.getDefaultSignature(objectId);
       if (result) {
         const res = JSON.parse(JSON.stringify(result));
         const defaultSignature = res?.ImageURL
