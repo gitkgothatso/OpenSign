@@ -145,11 +145,17 @@ const HomeLayout = () => {
       updatedTourStatus = [{ loginTour: true }];
     }
 
-    await axios.put(
-      serverUrl + "classes/contracts_Users/" + extUserId,
-      { TourStatus: updatedTourStatus },
-      { headers: { "X-Parse-Application-Id": appId } }
-    );
+    // TODO: Migrate to REST API - POST /api/v1/users/{userId}/tour-status
+    try {
+      await axios.put(
+        serverUrl + "classes/contracts_Users/" + extUserId,
+        { TourStatus: updatedTourStatus },
+        { headers: { "X-Parse-Application-Id": appId } }
+      );
+    } catch (error) {
+      console.log("Tour status update skipped (Parse endpoint not available):", error.message);
+      // Non-critical - tour status update can fail gracefully
+    }
   };
 
   async function checkTourStatus() {

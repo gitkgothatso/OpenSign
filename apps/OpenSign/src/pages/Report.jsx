@@ -203,17 +203,17 @@ const Report = () => {
             prevRecord.length > 0 ? [...prevRecord, ...arr] : arr
           );
         } else {
-          if (res.data.result.length >= docPerPage) {
+          if (res.length >= docPerPage) {
             setIsMoreDocs(true);
           } else {
             setIsMoreDocs(false);
           }
-          if (!res.data.result.error) {
+          if (!res.error) {
             setIsNextRecord(false);
             setList((prevRecord) =>
               prevRecord.length > 0
-                ? [...prevRecord, ...res.data.result]
-                : res.data.result
+                ? [...prevRecord, ...res]
+                : res
             );
           }
         }
