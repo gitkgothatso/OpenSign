@@ -203,37 +203,25 @@ export const toDataUrl = (file) => {
 
 //function for getting document details for getDrive cloud function
 export const getDrive = async (documentId, skip = 0, limit = 50) => {
-  const data = {
-    docId: documentId && documentId,
-    limit: limit,
-    skip: skip
-  };
-  const driveDeatils = await axios
-    .post(`${localStorage.getItem("baseUrl")}functions/getDrive`, data, {
-      headers: {
-        "Content-Type": "application/json",
-        "X-Parse-Application-Id": localStorage.getItem("parseAppId"),
-        sessiontoken: localStorage.getItem("accesstoken")
-      }
-    })
-    .then((Listdata) => {
-      const json = Listdata.data;
-
-      if (json && json.result.error) {
-        return json;
-      } else if (json && json.result) {
-        const data = json.result;
-        return data;
-      } else {
-        return [];
-      }
-    })
-    .catch((err) => {
-      console.log("Err in getDrive cloud function", err);
-      return "Error: Something went wrong!";
-    });
-
-  return driveDeatils;
+  try {
+    // Calculate page number from skip/limit
+    const page = Math.floor(skip / limit);
+    
+    // Use documentService to get user documents with pagination
+    const response = await documentService.getUserDocuments(page, limit);
+    
+    // Backend returns paginated response with content array
+    if (response?.error) {
+      return response;
+    } else if (response?.content) {
+      return response.content;
+    } else {
+      return [];
+    }
+  } catch (err) {
+    console.log("Err in getDrive cloud function", err);
+    return "Error: Something went wrong!";
+  }
 };
 
 // `pdfNewWidthFun` function is used to calculate pdf width to render in middle container
