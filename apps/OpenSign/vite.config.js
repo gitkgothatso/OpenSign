@@ -40,7 +40,21 @@ export default defineConfig(({ mode }) => {
     },
     server: {
       port: env.PORT || 3000, // Same port as CRA
-      open: true
+      open: true,
+      proxy: {
+        // Proxy Parse REST API calls to Spring Boot backend
+        '/api/app': {
+          target: 'http://localhost:8080',
+          changeOrigin: true,
+          secure: false
+        },
+        // Proxy Spring Boot REST API calls
+        '/api/v1': {
+          target: 'http://localhost:8080',
+          changeOrigin: true,
+          secure: false
+        }
+      }
     },
     test: {
       environment: "jsdom",
