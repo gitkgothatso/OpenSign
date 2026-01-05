@@ -596,19 +596,11 @@ const Forms = (props) => {
         // Retrieve the URL of the uploaded file
         if (response.url) {
           setFileUpload(response.url);
-            removeFile();
-            const title = generateTitleFromFilename(formData?.file?.name);
-            setFormData((obj) => ({ ...obj, password: "", Name: title }));
-            SaveFileSize(size, response.url, tenantId, userId);
-            return response.url;
-          } else {
-            removeFile();
-            setFormData((prev) => ({ ...prev, password: "" }));
-            setIsDecrypting(false);
-            if (inputFileRef.current) {
-              inputFileRef.current.value = ""; // Set file input value to empty string
-            }
-          }
+          removeFile();
+          const title = generateTitleFromFilename(formData?.file?.name);
+          setFormData((obj) => ({ ...obj, password: "", Name: title }));
+          SaveFileSize(size, response.url, tenantId, userId);
+          return response.url;
         } else {
           removeFile();
           setFormData((prev) => ({ ...prev, password: "" }));
