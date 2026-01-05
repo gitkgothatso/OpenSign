@@ -380,8 +380,8 @@ const Forms = (props) => {
       setIsSubmit(true);
       try {
         const currentUser = Parse.User.current();
-        // Fallback to extUserData if Parse.User.current() is null (migrated from Parse auth)
-        const userId = currentUser?.id || extUserData?.UserId?.objectId;
+        // Get userId from multiple sources (JWT migration compatibility)
+        const userId = currentUser?.id || localStorage.getItem('userId') || extUserData?.UserId?.objectId;
         
         if (!userId) {
           alert("User not authenticated. Please log in.");
