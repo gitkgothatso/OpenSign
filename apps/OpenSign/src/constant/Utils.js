@@ -13,6 +13,7 @@ import { applyNumberFormulasToPages, buildDownloadFilename } from "../utils";
 import fileService from "../services/fileService";
 import pdfService from "../services/pdfService";
 import signatureService from "../services/signatureService";
+import documentService from "../services/documentService";
 
 export const fontsizeArr = [2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28];
 export const fontColorArr = ["red", "black", "blue", "yellow"];
@@ -2433,30 +2434,17 @@ export const contactBook = async (objectId) => {
 
 //function for getting document details from contract_Documents class
 export const contractDocument = async (documentId, include) => {
-  const data = { docId: documentId, include: include };
-  const token = { sessionToken: localStorage.getItem("accesstoken") };
-  const documentDeatils = await axios
-    .post(`${localStorage.getItem("baseUrl")}functions/getDocument`, data, {
-      headers: {
-        "Content-Type": "application/json",
-        "X-Parse-Application-Id": localStorage.getItem("parseAppId"),
-        ...token
-      }
-    })
-    .then((Listdata) => {
-      const json = Listdata.data;
-      let data = [];
-      if (json && json.result.error) {
-        return json;
-      } else if (json && json.result) {
-        data.push(json.result);
-        return data;
-      } else {
-        return [];
-      }
-    })
-    .catch((err) => {
-      console.log("Err in getDocument cloud function ", err);
+  try {
+    const document = await documentService.getDocument(documentId, include);
+    if (document.error) {
+      return document;
+    } else if (document) {
+      return [document];
+    } else {
+      return [];
+    }
+  } catch (err) {
+    console.log("Err in getDocument ", err);
       return "Error: Something went wrong!";
     });
 
@@ -2874,20 +2862,9 @@ export const handleDownloadCertificate = async (
   } else {
     setIsDownloading("certificate");
     try {
-      const data = { docId: pdfDetails[0]?.objectId };
-      const docDetails = await axios.post(
-        `${localStorage.getItem("baseUrl")}functions/getDocument`,
-        data,
-        {
-          headers: {
-            "Content-Type": "application/json",
-            "X-Parse-Application-Id": localStorage.getItem("parseAppId"),
-            sessionToken: localStorage.getItem("accesstoken")
-          }
-        }
-      );
-      if (docDetails.data && docDetails.data.result) {
-        const doc = docDetails.data.result;
+      const docId = pdfDetails[0]?.objectId;
+      const doc = await documentService.getDocument(docId);
+      if (doc) {
         if (doc?.CertificateUrl) {
           await fetch(doc?.CertificateUrl);
           const certificateUrl = doc?.CertificateUrl;
