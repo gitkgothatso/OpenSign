@@ -9,6 +9,12 @@ const commonheader = {
   "X-Parse-Application-Id": parseAppId
 };
 export const SaveFileSize = async (size, imageUrl, tenantId, userId) => {
+  // Skip if tenantId is not provided (optional tracking)
+  if (!tenantId || tenantId.trim() === "") {
+    console.log("SaveFileSize: tenantId not provided, skipping storage tracking");
+    return;
+  }
+
   //checking server url and save file's size
   const tenantPtr = {
     __type: "Pointer",
