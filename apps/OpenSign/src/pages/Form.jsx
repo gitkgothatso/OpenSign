@@ -18,6 +18,7 @@ import {
   getFileAsArrayBuffer,
   removeTrailingSegment
 } from "../constant/Utils";
+import fileService from "../services/fileService";
 import { PDFDocument } from "pdf-lib";
 import axios from "axios";
 import {
@@ -310,24 +311,17 @@ const Forms = (props) => {
       const name = generatePdfName(16);
       const pdfName = `${name}.pdf`;
       let uploadedUrl = "";
-        const parseFile = new Parse.File(
+        // Upload using Spring Boot fileService instead of Parse.File
+        const response = await fileService.uploadFile(
+          pdfBytes,
           pdfName,
-          [...pdfBytes],
-          "application/pdf"
+          "application/pdf",
+          (percentCompleted, loaded, total) => {
+            setpercentage(percentCompleted);
+          }
         );
-        const response = await parseFile.save({
-          progress: (progressValue, loaded, total) => {
-            if (progressValue !== null) {
-              const percentCompleted = Math.round((loaded * 100) / total);
-              setpercentage(percentCompleted);
-            }
-          }
-        });
-        if (response.url()) {
-          const fileRes = await getSecureUrl(response.url());
-          if (fileRes.url) {
-            uploadedUrl = fileRes.url;
-          }
+        if (response.url) {
+          uploadedUrl = response.url;
         }
       if (uploadedUrl) {
         const tenantId = localStorage.getItem("TenantId");
@@ -590,25 +584,23 @@ const Forms = (props) => {
       setIsDecrypting(false);
         const res = await getFileAsArrayBuffer(pdfFile);
         const flatPdf = await flattenPdf(res);
-        const parseFile = new Parse.File(name, [...flatPdf], "application/pdf");
-        await parseFile.save({
-          progress: (progressValue, loaded, total) => {
-            if (progressValue !== null) {
-              const percentCompleted = Math.round((loaded * 100) / total);
-              setpercentage(percentCompleted);
-            }
+        // Upload using Spring Boot fileService instead of Parse.File
+        const response = await fileService.uploadFile(
+          flatPdf,
+          name,
+          "application/pdf",
+          (percentCompleted, loaded, total) => {
+            setpercentage(percentCompleted);
           }
-        });
+        );
         // Retrieve the URL of the uploaded file
-        if (parseFile.url()) {
-          const fileRes = await getSecureUrl(parseFile.url());
-          if (fileRes.url) {
-            setFileUpload(fileRes.url);
+        if (response.url) {
+          setFileUpload(response.url);
             removeFile();
             const title = generateTitleFromFilename(formData?.file?.name);
             setFormData((obj) => ({ ...obj, password: "", Name: title }));
-            SaveFileSize(size, fileRes?.url, tenantId, userId);
-            return fileRes.url;
+            SaveFileSize(size, response.url, tenantId, userId);
+            return response.url;
           } else {
             removeFile();
             setFormData((prev) => ({ ...prev, password: "" }));

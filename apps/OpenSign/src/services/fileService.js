@@ -1,4 +1,4 @@
-import apiClient from './apiClient';
+import apiClient from '../config/api';
 
 /**
  * File upload service - replaces Parse Cloud function: fileupload
@@ -6,18 +6,43 @@ import apiClient from './apiClient';
 export const fileService = {
   /**
    * Upload a file to storage (local or S3)
-   * @param {File} file - The file to upload
-   * @returns {Promise<{url: string}>} File upload result with URL
+   * @param {File|Blob|Uint8Array} file - The file to upload
+   * @param {string} filename - Optional filename (required for Uint8Array)
+   * @param {string} contentType - Optional content type (default: application/pdf)
+   * @param {Function} onProgress - Optional progress callback (progressValue, loaded, total)
+   * @returns {Promise<{url: string, fileKey: string}>} File upload result with URL
    */
-  uploadFile: async (file) => {
+  uploadFile: async (file, filename = 'document.pdf', contentType = 'application/pdf', onProgress = null) => {
     const formData = new FormData();
-    formData.append('file', file);
+    
+    // Handle different input types
+    let fileBlob;
+    if (file instanceof File || file instanceof Blob) {
+      fileBlob = file;
+    } else if (file instanceof Uint8Array || Array.isArray(file)) {
+      // Convert byte array to Blob
+      fileBlob = new Blob([file], { type: contentType });
+    } else {
+      throw new Error('Invalid file type. Expected File, Blob, or Uint8Array');
+    }
+    
+    formData.append('file', fileBlob, filename);
 
-    const response = await apiClient.post('/files/upload', formData, {
+    const config = {
       headers: {
         'Content-Type': 'multipart/form-data'
       }
-    });
+    };
+
+    // Add progress tracking if callback provided
+    if (onProgress) {
+      config.onUploadProgress = (progressEvent) => {
+        const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+        onProgress(percentCompleted, progressEvent.loaded, progressEvent.total);
+      };
+    }
+
+    const response = await apiClient.post('/files/upload', formData, config);
 
     return response.data;
   },
