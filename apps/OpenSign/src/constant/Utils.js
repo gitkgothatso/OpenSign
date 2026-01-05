@@ -14,6 +14,7 @@ import fileService from "../services/fileService";
 import pdfService from "../services/pdfService";
 import signatureService from "../services/signatureService";
 import documentService from "../services/documentService";
+import contactService from "../services/contactService";
 
 export const fontsizeArr = [2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28];
 export const fontColorArr = ["red", "black", "blue", "yellow"];
@@ -2445,10 +2446,8 @@ export const contractDocument = async (documentId, include) => {
     }
   } catch (err) {
     console.log("Err in getDocument ", err);
-      return "Error: Something went wrong!";
-    });
-
-  return documentDeatils;
+    return "Error: Something went wrong!";
+  }
 };
 
 //function for add default signature or image for all requested location
@@ -2891,24 +2890,16 @@ export function escapeRegExp(string) {
 }
 export async function findContact(value) {
   try {
-    const baseURL = localStorage.getItem("baseUrl");
-    const url = `${baseURL}functions/getsigners`;
-    const token = {
-      "X-Parse-Session-Token": localStorage.getItem("accesstoken")
-    };
-    const headers = {
-      "Content-Type": "application/json",
-      "X-Parse-Application-Id": localStorage.getItem("parseAppId"),
-      ...token
-    };
-    const axiosRes = await axios.post(url, { search: value }, { headers });
-    const contactRes = axiosRes?.data?.result || [];
+    const response = await contactService.searchContacts(value);
+    // Backend returns paginated data with content array
+    const contactRes = response?.content || [];
     if (contactRes) {
       const res = JSON.parse(JSON.stringify(contactRes));
       return res;
     }
   } catch (error) {
     console.error("Error fetching suggestions:", error);
+    return [];
   }
 }
 // `compensateRotation` is used to calculate x and y position of widget on portait, landscape pdf for pdf-lib
