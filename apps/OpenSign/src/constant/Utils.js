@@ -2705,23 +2705,9 @@ export const fetchUrl = async (url, fileName) => {
 };
 
 export const getSignedUrl = async (pdfUrl, docId, templateId) => {
-  //use only axios here due to public template sign
-  const axiosRes = await axios.post(
-    `${localStorage.getItem("baseUrl")}/functions/getsignedurl`,
-    {
-      url: pdfUrl,
-      docId: docId || "",
-      templateId: templateId || ""
-    },
-    {
-      headers: {
-        "content-type": "Application/json",
-        "X-Parse-Application-Id": localStorage.getItem("parseAppId"),
-        "X-Parse-Session-Token": localStorage.getItem("accesstoken")
-      }
-    }
-  );
-  const url = axiosRes.data.result;
+  //use fileService instead of Parse endpoint
+  // Note: Backend may need docId and templateId params in future
+  const url = await fileService.getSecureUrl(pdfUrl);
   return url;
 };
 //download base64 type pdf
@@ -2795,24 +2781,8 @@ export const handleToPrint = async (event, setIsDownloading, pdfDetails) => {
   const docId = pdfDetails?.[0]?.objectId || "";
 
   try {
-    // const url = await Parse.Cloud.run("getsignedurl", { url: pdfUrl });
-    //`localStorage.getItem("baseUrl")` is also use in public-profile flow for public-sign
-    //if we give this `appInfo.baseUrl` as a base url then in public-profile it will create base url of it's window.location.origin ex- opensign.me which is not base url
-    const axiosRes = await axios.post(
-      `${localStorage.getItem("baseUrl")}/functions/getsignedurl`,
-      {
-        url: pdfUrl,
-        docId: docId
-      },
-      {
-        headers: {
-          "content-type": "Application/json",
-          "X-Parse-Application-Id": localStorage.getItem("parseAppId"),
-          "X-Parse-Session-Token": localStorage.getItem("accesstoken")
-        }
-      }
-    );
-    const url = axiosRes.data.result;
+    // Use fileService instead of Parse endpoint
+    const url = await fileService.getSecureUrl(pdfUrl);
     const pdf = await getBase64FromUrl(url);
     const isAndroidDevice = navigator.userAgent.match(/Android/i);
     const isAppleDevice =
