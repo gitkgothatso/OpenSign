@@ -15,8 +15,8 @@ export const documentService = {
    * @returns {Promise<Object>} Document data
    */
   getDocument: async (docId, include) => {
-    const params = include ? { include } : {};
-    const response = await apiClient.get(`/documents/${docId}`, { params });
+    // Use Parse-compatible endpoint for MongoDB contracts_Document
+    const response = await apiClient.get(`/app/classes/contracts_Document/${docId}`);
     return response.data;
   },
 
