@@ -164,7 +164,17 @@ function SignYourSelf() {
     localStorage.getItem(
       `Parse/${localStorage.getItem("parseAppId")}/currentUser`
     );
-  const jsonSender = JSON.parse(senderUser);
+  
+  // Fallback to JWT userId if Parse user not available (migrated from Parse auth)
+  let jsonSender = null;
+  if (senderUser) {
+    jsonSender = JSON.parse(senderUser);
+  } else {
+    const userId = localStorage.getItem('userId');
+    if (userId) {
+      jsonSender = { objectId: userId };
+    }
+  }
 
   useEffect(() => {
     dispatch(resetWidgetState([]));
