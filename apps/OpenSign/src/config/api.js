@@ -32,7 +32,7 @@ apiClient.interceptors.response.use(
       localStorage.removeItem('jwtToken');
       localStorage.removeItem('userId');
       localStorage.removeItem('username');
-      window.location.href = '/login';
+      window.location.href = '/';
     }
     return Promise.reject(error);
   }
