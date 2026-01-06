@@ -1,5 +1,6 @@
 // src/services/documentService.js
 import apiClient from '../config/api';
+import axios from 'axios';
 
 /**
  * Document service - handles document operations
@@ -16,7 +17,8 @@ export const documentService = {
    */
   getDocument: async (docId, include) => {
     // Use Parse-compatible endpoint for MongoDB contracts_Document
-    const response = await apiClient.get(`/app/classes/contracts_Document/${docId}`);
+    // Use axios directly to avoid /api/v1 prefix from apiClient
+    const response = await axios.get(`/api/app/classes/contracts_Document/${docId}`);
     return response.data;
   },
 
