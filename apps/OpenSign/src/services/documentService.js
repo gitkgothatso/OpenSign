@@ -18,7 +18,9 @@ export const documentService = {
   getDocument: async (docId, include) => {
     // Use Parse-compatible endpoint for MongoDB contracts_Document
     // Use axios directly to avoid /api/v1 prefix from apiClient
-    const response = await axios.get(`/api/app/classes/contracts_Document/${docId}`);
+    const token = localStorage.getItem('jwtToken');
+    const headers = token ? { Authorization: `Bearer ${token}` } : {};
+    const response = await axios.get(`/api/app/classes/contracts_Document/${docId}`, { headers });
     return response.data;
   },
 
