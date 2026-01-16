@@ -1,16 +1,19 @@
 import { useState, useEffect } from "react";
 import axios from "axios";
-import Parse from "parse";
 import getReplacedHashQuery from "../../constant/getReplacedHashQuery";
 import { useNavigate } from "react-router";
 import Tooltip from "../../primitives/Tooltip";
 import { useTranslation } from "react-i18next";
 import { reportService } from "../../services/reportService";
 import { authService } from "../../services/authService";
+import { userService } from "../../services/userService";
+import documentService from "../../services/documentService";
+import { useUser } from "../../context/UserContext";
 
 const DashboardCard = (props) => {
   const navigate = useNavigate();
   const { t } = useTranslation();
+  const { user } = useUser();
   const [parseBaseUrl] = useState(localStorage.getItem("baseUrl"));
   const [parseAppId] = useState(localStorage.getItem("parseAppId"));
   const [response, setresponse] = useState("");
@@ -32,8 +35,7 @@ const DashboardCard = (props) => {
           let data = JSON.parse(localStorage.getItem("Extand_Class"));
           res = data[0];
         } else {
-          res = await Parse.Cloud.run("getUserDetails");
-          if (res) res = res.toJSON();
+          res = user;
         }
         if (res) {
           let json = res;
@@ -78,7 +80,7 @@ const DashboardCard = (props) => {
     } else {
       setLoading(true);
       try {
-        const currentUser = Parse.User.current();
+        const currentUser = authService.getCurrentUser();
         let reg1 = /(\#.*?\#)/gi; // eslint-disable-line
         let _query = props.Data.query;
         let str = _query;
@@ -93,8 +95,7 @@ const DashboardCard = (props) => {
             let data = JSON.parse(localStorage.getItem("Extand_Class"));
             resr = data[0];
           } else {
-            resr = await Parse.Cloud.run("getUserDetails");
-            if (resr) resr = resr.toJSON();
+            resr = user;
           }
 
           let json = resr;
@@ -102,7 +103,7 @@ const DashboardCard = (props) => {
           const HashCount = str.match(reg1);
           if (HashCount.length > 1) {
             // `getReplacedHashQuery` is used to replace multiple hash keyword with actual values from query
-            test1 = getReplacedHashQuery(str, json);
+            test1 = getReplacedHashQuery(str, json, user);
           } else {
             output = output.join();
             output = output.substring(1, output.length - 1);
@@ -165,7 +166,19 @@ const DashboardCard = (props) => {
               }
               setresponse(arr.length);
             });
+        } else if (props.Data.Redirect_id === "1MwEuxLEkF") {
+          // Handle "Out for signatures" count - documents sent by user
+          const filters = {
+            createdBy: currentUser.id,
+            isCompleted: false,
+            isDeclined: false,
+            isArchived: false,
+            hasSigners: true
+          };
+          const count = await documentService.getDocumentCount(filters);
+          setresponse(count);
         } else {
+          // Fallback to Parse REST API for other cards (to be migrated)
           await axios.get(url, { headers: headers }).then((res) => {
             if (res?.data?.[props.Data.key]) {
               setresponse(parseInt(res.data[props.Data.key]));
@@ -210,8 +223,8 @@ const DashboardCard = (props) => {
               let data = JSON.parse(localStorage.getItem("Extand_Class"));
               res = data[0];
             } else {
-              let resr = await Parse.Cloud.run("getUserDetails");
-              if (res) res = resr.toJSON();
+              let resr = await userService.getCurrentUser();
+              if (resr) res = resr;
             }
 
             let json = res;

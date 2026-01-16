@@ -1,13 +1,25 @@
 import { useTranslation } from "react-i18next";
 import { useSelector } from "react-redux";
 import { NavLink } from "react-router";
+import { useUser } from "../../context/UserContext";
 
 const Menu = ({ item, isOpen, closeSidebar }) => {
-  const appName =
-    "OpenSign™";
+  const appName = "OpenSign™";
   const drivename = appName === "OpenSign™" ? "OpenSign™" : "";
   const { t } = useTranslation();
   const { selectedMenu } = useSelector((state) => state.sidebar);
+  const { permissions, loading } = useUser();
+
+  // If still loading or no permissions yet, show all items (don't filter)
+  // This prevents hiding everything during initial load
+  const shouldHide = item.requiresPermission && 
+                     permissions && 
+                     !loading && 
+                     !permissions[item.requiresPermission];
+
+  if (shouldHide) {
+    return null; // Hide menu item if user doesn't have permission
+  }
 
   return (
     <li key={item.title} role="none" className="my-0.5">

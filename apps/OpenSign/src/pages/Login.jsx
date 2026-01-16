@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import Parse from "parse";
 import authService from "../services/authService";
 import userService from "../services/userService";
 import { useDispatch } from "react-redux";
@@ -173,9 +172,7 @@ function Login() {
         "X-Parse-Application-Id": parseAppId
       }
     });
-    await Parse.User.become(sessionToken).then(() => {
-      // window.localStorage.setItem("accesstoken", sessionToken); // Deprecated: Using jwtToken now
-    });
+    // JWT token is already stored, no need for Parse.User.become
     if (res.data) {
       let _user = res.data;
       setLocalVar(_user);
@@ -201,8 +198,8 @@ function Login() {
               localStorage.setItem("username", extInfo?.Name);
               if (extInfo?.TenantId) {
                 const tenant = {
-                  Id: extInfo?.TenantId?.objectId || "",
-                  Name: extInfo?.TenantId?.TenantName || ""
+                  Id: extInfo.tenantId.objectId || "",
+                  Name: extInfo?.company || ""
                 };
                 localStorage.setItem("TenantId", tenant?.Id);
                 dispatch(showTenant(tenant?.Name));
@@ -238,11 +235,11 @@ function Login() {
   const GetLoginData = async () => {
     setState({ ...state, loading: true });
     try {
-      const user = await Parse.User.become(localStorage.getItem("accesstoken"));
-      const _user = user.toJSON();
+      // Use authService to get current user (JWT-based)
+      const extUser = await userService.getCurrentUser();
+      const _user = extUser;
       setLocalVar(_user);
       const userSettings = appInfo.settings;
-      const extUser = await userService.getCurrentUser();
       if (extUser) {
         const IsDisabled = extUser?.IsDisabled || false;
         if (!IsDisabled) {
@@ -298,42 +295,37 @@ function Login() {
     e.preventDefault();
     if (userDetails.Destination && userDetails.Company) {
       setThirdpartyLoader(true);
-      const userInformation = JSON.parse(
-        localStorage.getItem("UserInformation")
-      );
       
       try {
-        // Use authService.signup instead of Parse.Cloud.run
-        const userSignUp = await authService.signup(
-          userInformation.email, // username (using email)
-          userInformation.email,
-          Math.random().toString(36).slice(-12), // temporary password for OAuth users
-          userInformation.name,
-          userInformation?.phone || "",
+        // Update the current user's profile with Company and Destination
+        await userService.updateCompanyInfo(
           userDetails.Company,
-          userDetails.Destination, // jobTitle
-          "contracts_User",
-          usertimezone
+          userDetails.Destination
         );
         
-        if (userSignUp && userSignUp.jwtToken) {
-          const LocalUserDetails = {
-            name: userInformation.name,
-            email: userInformation.email,
-            phone: userInformation?.phone || "",
-            company: userDetails.Company,
-            jobTitle: userDetails.Destination
-          };
-          localStorage.setItem("userDetails", JSON.stringify(LocalUserDetails));
-          
-          // Continue login flow with the user data
-          await continueLoginFlow();
-        } else {
-          alert(userSignUp.message || t("signup-failed"));
-        }
+        console.log("Profile updated successfully with Company and Destination");
+        
+        // Refresh user profile to get updated data
+        const updatedUser = await userService.getCurrentUser();
+        console.log("Updated user profile:", updatedUser);
+        
+        // Store updated details in localStorage
+        const LocalUserDetails = {
+          name: updatedUser.name || updatedUser.Name,
+          email: updatedUser.email || updatedUser.Email,
+          phone: updatedUser.phone || updatedUser.Phone,
+          company: updatedUser.company || updatedUser.Company,
+          jobTitle: updatedUser.jobTitle || updatedUser.Destination
+        };
+        localStorage.setItem("userDetails", JSON.stringify(LocalUserDetails));
+        
+        // Close modal and continue login flow
+        setIsModal(false);
+        await continueLoginFlow();
       } catch (error) {
-        console.error("Signup error:", error);
-        alert(error.response?.data?.message || t("server-error"));
+        console.error("Profile update error:", error);
+        const errorMsg = error.response?.data?.error || error.message || t("server-error");
+        showToast("danger", errorMsg);
       } finally {
         setThirdpartyLoader(false);
       }
@@ -345,7 +337,7 @@ function Login() {
   const logOutUser = async () => {
     setIsModal(false);
     try {
-      await Parse.User.logOut();
+      authService.logout();
     } catch (err) {
       console.log("Err while logging out", err);
     }
@@ -406,18 +398,20 @@ function Login() {
             localStorage.setItem("Extand_Class", JSON.stringify([extUser]));
             localStorage.setItem("userEmail", extInfo.Email || extInfo.email);
             localStorage.setItem("username", extInfo.Name || extInfo.name);
+            // Robustly extract tenantId as string
+            let tenantId = "";
+            let tenantName = "";
             if (extInfo?.TenantId) {
-              const tenant = {
-                Id: extInfo?.TenantId?.objectId || "",
-                Name: extInfo?.TenantId?.TenantName || ""
-              };
-              localStorage.setItem("TenantId", tenant?.Id);
-              dispatch(showTenant(tenant?.Name));
-              localStorage.setItem("TenantName", tenant?.Name);
-            } else {
-              // Set empty TenantId if user doesn't have one
-              localStorage.setItem("TenantId", "");
+              if (typeof extInfo.TenantId === "string") {
+                tenantId = extInfo.TenantId;
+              } else if (typeof extInfo.TenantId === "object" && extInfo.TenantId.objectId) {
+                tenantId = extInfo.TenantId.objectId;
+                tenantName = extInfo.TenantId.TenantName || extInfo.company || "";
+              }
             }
+            localStorage.setItem("TenantId", tenantId);
+            dispatch(showTenant(tenantName));
+            localStorage.setItem("TenantName", tenantName);
             localStorage.setItem("PageLanding", menu.pageId);
             localStorage.setItem("defaultmenuid", menu.menuId);
             localStorage.setItem("pageType", menu.pageType);

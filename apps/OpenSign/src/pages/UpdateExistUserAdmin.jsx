@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import Loader from "../primitives/Loader";
-import Parse from "parse";
+import { userService } from "../services/userService";
 import { NavLink, useNavigate } from "react-router";
 import Alert from "../primitives/Alert";
 import { useTranslation } from "react-i18next";
@@ -22,7 +22,7 @@ const UpdateExistUserAdmin = () => {
 
   const checkIsAdminExist = async () => {
     try {
-      const isAdminExist = await Parse.Cloud.run("checkadminexist");
+      const isAdminExist = await userService.checkAdminExists();
       if (isAdminExist !== "not_exist") {
         // console.log("isAdminExist ", isAdminExist);
         setErrMsg(t("admin-exists"));
@@ -42,10 +42,7 @@ const UpdateExistUserAdmin = () => {
     } else {
       setIsSubmitLoading(true);
       try {
-        const updateUserAsAdmin = await Parse.Cloud.run(
-          "updateuserasadmin",
-          formdata
-        );
+        const updateUserAsAdmin = await userService.updateUserAsAdmin(formdata);
         // console.log("updateUserAsAdmin ", updateUserAsAdmin);
         if (updateUserAsAdmin === "admin_created") {
           setIsAlert({ type: "success", msg: t("admin-created") });

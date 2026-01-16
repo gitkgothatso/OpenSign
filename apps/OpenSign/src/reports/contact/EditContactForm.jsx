@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import Loader from "../../primitives/Loader";
 import { useTranslation } from "react-i18next";
-import Parse from "parse";
+import contactService from "../../services/contactService";
 import { useDispatch } from "react-redux";
 import { sessionStatus } from "../../redux/reducers/userReducer";
 
@@ -35,7 +35,7 @@ const EditContactForm = (props) => {
     e.preventDefault();
     e.stopPropagation();
     try {
-      const sessionToken = Parse.User?.current()?.getSessionToken();
+      // Session token handled by apiClient interceptor
       if (localStorage.getItem("TenantId") && sessionToken) {
         if (props.handleEditContact) {
           try {
@@ -49,7 +49,7 @@ const EditContactForm = (props) => {
               jobTitle: formData?.JobTitle,
               tenantId: localStorage.getItem("TenantId")
             };
-            const res = await Parse.Cloud.run("editcontact", params);
+            const res = await contactService.editContact(params);
             const updateContact = {
               ...res,
               Name: formData.Name,

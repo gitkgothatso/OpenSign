@@ -8,7 +8,7 @@ import Sidebar from "../components/sidebar/Sidebar";
 import Tour from "../primitives/Tour";
 import axios from "axios";
 import { useDispatch, useSelector } from "react-redux";
-import Parse from "parse";
+import authService from "../services/authService";
 import {
   Outlet
 } from "react-router";
@@ -125,7 +125,7 @@ const HomeLayout = () => {
   };
   const closeTour = async () => {
     setIsTour(false);
-    const serverUrl = localStorage.getItem("baseUrl");
+    const serverUrl = localStorage.getItem("baseUrl") || "/api/app/";
     const appId = localStorage.getItem("parseAppId");
     const json = JSON.parse(localStorage.getItem("Extand_Class"));
     const extUserId = json && json.length > 0 && json[0].objectId;
@@ -145,13 +145,8 @@ const HomeLayout = () => {
       updatedTourStatus = [{ loginTour: true }];
     }
 
-    // TODO: Migrate to REST API - POST /api/v1/users/{userId}/tour-status
     try {
-      await axios.put(
-        serverUrl + "classes/contracts_Users/" + extUserId,
-        { TourStatus: updatedTourStatus },
-        { headers: { "X-Parse-Application-Id": appId } }
-      );
+      await userService.updateTourStatus(extUserId, updatedTourStatus);
     } catch (error) {
       console.log("Tour status update skipped (Parse endpoint not available):", error.message);
       // Non-critical - tour status update can fail gracefully

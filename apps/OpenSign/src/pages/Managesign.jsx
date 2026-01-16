@@ -7,7 +7,8 @@ import {
   getSecureUrl,
   toDataUrl
 } from "../constant/Utils";
-import Parse from "parse";
+import signatureService from "../services/signatureService";
+import authService from "../services/authService";
 import { SaveFileSize } from "../constant/saveFileSize";
 import Alert from "../primitives/Alert";
 import Loader from "../primitives/Loader";
@@ -48,7 +49,7 @@ const ManageSign = () => {
     // eslint-disable-next-line
   }, []);
   const fetchUserSign = async () => {
-    const User = Parse.User.current();
+    const User = authService.getCurrentUser();
     if (User) {
       const userId = {
         __type: "Pointer",
@@ -56,9 +57,7 @@ const ManageSign = () => {
         objectId: User.id
       };
       try {
-        const signRes = await Parse.Cloud.run("getdefaultsignature", {
-          userId: User.id
-        });
+        const signRes = await signatureService.getDefaultSignature(User.id);
         if (signRes) {
           const res = signRes.toJSON();
           setId(res.objectId);
@@ -224,10 +223,9 @@ const ManageSign = () => {
 
   const uploadFile = async (file) => {
     try {
-      const parseFile = new Parse.File(file.name, file);
-      const response = await parseFile.save();
-      if (response?.url()) {
-        const fileRes = await getSecureUrl(response?.url());
+      const response = await signatureService.uploadSignatureFile(file);
+      if (response?.url) {
+        const fileRes = await getSecureUrl(response.url);
         if (fileRes?.url) {
           const tenantId = localStorage.getItem("TenantId");
           const userId = Parse?.User?.current()?.id;
@@ -252,8 +250,8 @@ const ManageSign = () => {
 
   const saveEntry = async (obj) => {
     try {
-      const User = Parse?.User?.current()?.id;
-      const res = await Parse.Cloud.run("managesign", {
+      const User = authService.getCurrentUser()?.id;
+      const res = await signatureService.manageSignature({
         signature: obj.url,
         userId: User,
         initials: obj.initialsUrl,

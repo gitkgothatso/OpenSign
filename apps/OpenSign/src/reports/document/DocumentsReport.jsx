@@ -7,7 +7,7 @@ import ModalUi from "../../primitives/ModalUi";
 import Alert from "../../primitives/Alert";
 import Tooltip from "../../primitives/Tooltip";
 import ShareButton from "../../primitives/ShareButton";
-import Parse from "parse";
+import { saveAsTemplate, recreateDocument } from "../../services/documentService";
 import {
   copytoData,
   fetchUrl,
@@ -356,10 +356,9 @@ const DocumentsReport = (props) => {
     setIsDeleteModal({});
     setActLoader({ [`${item.objectId}`]: true });
     try {
-      const serverUrl = serverUrl_fn();
-      const cls = "contracts_Document";
-      const url = serverUrl + `/classes/${cls}/`;
-      const body = { IsArchive: true };
+      await documentService.archiveDocument(item.objectId);
+      /* Original Parse API code removed */
+      /*
       const res = await axios.put(url + item.objectId, body, {
         headers: {
           "Content-Type": "application/json",
@@ -374,7 +373,7 @@ const DocumentsReport = (props) => {
           (x) => x.objectId !== item.objectId
         );
         props.setList(upldatedList);
-      }
+      } */
     } catch (err) {
       console.log("err", err);
       showAlert("danger", t("something-went-wrong-mssg"));
@@ -718,10 +717,9 @@ const DocumentsReport = (props) => {
         const updateExpiryDate = new Date(expiryDate).toISOString();
         const expiryIsoFormat = { iso: updateExpiryDate, __type: "Date" };
         try {
-          const serverUrl = serverUrl_fn();
-          const cls = "contracts_Document";
-          const url = serverUrl + `/classes/${cls}/`;
-          const body = { ExpiryDate: expiryIsoFormat };
+          await documentService.updateDocumentExpiry(item.objectId, updateExpiryDate);
+          /* Original Parse API code removed */
+          /*
           const res = await axios.put(url + item.objectId, body, {
             headers: {
               "Content-Type": "application/json",
@@ -743,7 +741,7 @@ const DocumentsReport = (props) => {
               );
               props.setList(upldatedList);
             }
-          }
+          } */
         } catch (err) {
           console.log("err", err);
           showAlert("danger", t("something-went-wrong-mssg"), 2000);
@@ -766,7 +764,7 @@ const DocumentsReport = (props) => {
     setIsModal({});
     const className = "contracts_Document";
     try {
-      const query = new Parse.Query(className);
+      // Use documentService to query documents
       const docObj = await query.get(item.objectId);
       docObj.set("Name", renameDoc);
       await docObj.save();
@@ -800,7 +798,7 @@ const DocumentsReport = (props) => {
   const handleSaveAsTemplate = async (doc) => {
     try {
       const params = { docId: doc?.objectId };
-      const templateRes = await Parse.Cloud.run("saveastemplate", params);
+      const templateRes = await saveAsTemplate(params);
       setTemplateId(templateRes?.id);
       setIsSuccess({ [doc.objectId]: true });
     } catch (err) {
@@ -860,7 +858,7 @@ const DocumentsReport = (props) => {
   const handleRecreateDoc = async (item) => {
     setActLoader({ [item.objectId]: true });
     try {
-      const res = await Parse.Cloud.run("recreatedoc", {
+      const res = await recreateDocument({
         docId: item.objectId
       });
       if (res) {

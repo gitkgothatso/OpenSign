@@ -10,7 +10,7 @@ import {
   signatureTypes,
   usertimezone
 } from "../constant/Utils";
-import Parse from "parse";
+import { userService } from "../services/userService";
 import { Tooltip as ReactTooltip } from "react-tooltip";
 import TimezoneSelector from "../components/preferences/TimezoneSelector";
 import DateFormatSelector from "../components/preferences/DateFormatSelector";
@@ -188,7 +188,7 @@ const Preferences = () => {
           IsLTVEnabled: isLTVEnabled,
           DownloadFilenameFormat: fileNameFormat,
         };
-        const updateRes = await Parse.Cloud.run("updatepreferences", params);
+        const updateRes = await userService.updatePreferences(params);
         if (updateRes) {
           setIsAlert({ type: "success", msg: t("saved-successfully") });
           let extUser =

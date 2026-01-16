@@ -2,7 +2,7 @@ import { useTranslation } from "react-i18next";
 import { useLocation, useNavigate } from "react-router";
 import { useDispatch } from "react-redux";
 import { sessionStatus } from "../redux/reducers/userReducer";
-import Parse from "parse";
+import authService from "../services/authService";
 import ModalUi from "./ModalUi";
 
 const SessionExpiredModal = () => {
@@ -13,7 +13,7 @@ const SessionExpiredModal = () => {
 
   const handleLoginBtn = async () => {
     try {
-      await Parse?.User?.logOut();
+      await authService.logout();
     } catch (err) {
       console.log(`err: ${err}`);
     } finally {

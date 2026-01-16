@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import * as XLSX from "xlsx";
-import Parse from "parse";
+import contactService from "../../services/contactService";
 import { emailRegex } from "../../constant/const";
 import { useDispatch } from "react-redux";
 import { sessionStatus } from "../../redux/reducers/userReducer";
@@ -186,7 +186,7 @@ const ImportContact = ({ setLoader, onImport, showAlert }) => {
     e.stopPropagation();
     setLoader(true);
     try {
-      const sessionToken = Parse.User?.current()?.getSessionToken();
+      // Session token handled by apiClient interceptor
       if (localStorage.getItem("TenantId") && sessionToken) {
         try {
           const filterdata = importedData.map((x) => ({
@@ -198,7 +198,7 @@ const ImportContact = ({ setLoader, onImport, showAlert }) => {
             TenantId: localStorage.getItem("TenantId")
           }));
           const contacts = JSON.stringify(filterdata);
-          const res = await Parse.Cloud.run("createbatchcontact", { contacts });
+          const res = await contactService.createBatchContacts(contacts);
           if (res) {
             showAlert(
               "info",

@@ -1,7 +1,7 @@
 import axios from "axios";
 import moment from "moment";
 import { PDFDocument, rgb, degrees } from "pdf-lib";
-import Parse from "parse";
+// Parse SDK removed - use service layer for all operations
 import { appInfo } from "./appinfo";
 import { saveAs } from "file-saver";
 import printModule from "print-js";
@@ -18,6 +18,7 @@ import contactService from "../services/contactService";
 import emailService from "../services/emailService";
 import userService from "../services/userService";
 import tenantService from "../services/tenantService";
+import apiClient from "../config/api";
 
 export const fontsizeArr = [2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28];
 export const fontColorArr = ["red", "black", "blue", "yellow"];
@@ -2416,16 +2417,64 @@ export const contactBook = async (objectId) => {
 //function for getting document details from contract_Documents class
 export const contractDocument = async (documentId, include) => {
   try {
+    if (!documentId) {
+      console.warn('contractDocument called without documentId');
+      return [];
+    }
     const document = await documentService.getDocument(documentId, include);
+    if (!document) {
+      return [];
+    }
     if (document.error) {
       return document;
     } else if (document) {
-      return [document];
+      // Transform backend response (camelCase) to Parse format (PascalCase) for compatibility
+      const transformedDoc = {
+        objectId: document.objectId,
+        Name: document.name,
+        Description: document.description,
+        Note: document.note,
+        URL: document.url,
+        SignedUrl: document.signedUrl,
+        Placeholders: document.placeholders || [],
+        Signers: document.signers || [],
+        IsCompleted: document.isCompleted,
+        IsDeclined: document.isDeclined,
+        CompletedOn: document.completedOn,
+        ExpiryDate: document.expiryDate,
+        SendinOrder: document.sendInOrder,
+        AutomaticReminders: document.autoReminder,
+        RemindOnceInEvery: document.remindOnceInEvery,
+        IsEnableOTP: document.isEnableOTP,
+        AuditTrail: document.auditTrail || [],
+        TimeToCompleteDays: document.timeToCompleteDays,
+        Type: document.type,
+        Size: document.size,
+        createdAt: document.createdAt,
+        updatedAt: document.updatedAt,
+        // Map createdBy to ExtUserPtr for compatibility
+        ExtUserPtr: document.createdBy ? {
+          objectId: document.createdBy,
+          className: 'contracts_Users'
+        } : null,
+        // Map folderId to Folder pointer
+        Folder: document.folderId ? {
+          __type: 'Pointer',
+          className: 'contracts_Folder',
+          objectId: document.folderId
+        } : null
+      };
+      return [transformedDoc];
     } else {
       return [];
     }
   } catch (err) {
-    console.log("Err in getDocument ", err);
+    // Log 404 as warning, other errors as errors
+    if (err?.response?.status === 404) {
+      console.warn(`Document not found: ${documentId}`);
+      return [];
+    }
+    console.error("Err in getDocument ", err);
     return "Error: Something went wrong!";
   }
 };
@@ -2545,34 +2594,28 @@ export const getFileName = (fileUrl) => {
 
 //fetch tenant app logo from `partners_Tenant` class by domain name
 export const getAppLogo = async () => {
-  // TODO: Implement tenant logo API in Java backend
-  // For now, return default logo
-  localStorage.setItem("appname", "OpenSign™");
-  localStorage.setItem("favicon", appInfo.fev_Icon);
-  return { logo: appInfo.applogo, user: "exist" };
-  
-  // const domain = window.location.host;
-  // try {
-  //   const tenant = await Parse.Cloud.run("getlogobydomain", {
-  //     domain: domain
-  //   });
-  //   if (tenant) {
-  //     localStorage.setItem("appname", "OpenSign™");
-  //     localStorage.setItem("favicon", appInfo.fev_Icon);
-  //     return {
-  //       logo: tenant?.logo,
-  //       user: tenant?.user
-  //     };
-  //   }
-  // } catch (err) {
-  //   console.log("err in getlogo ", err);
-  //   localStorage.setItem("favicon", appInfo.fev_Icon);
-  //   if (err?.message?.includes("valid JSON")) {
-  //     return { logo: appInfo.applogo, user: "exist", error: "invalid_json" };
-  //   } else {
-  //     return { logo: appInfo.applogo, user: "exist" };
-  //   }
-  // }
+
+  const domain = window.location.host;
+  try {
+    const response = await apiClient.get(`/tenants/domain/${encodeURIComponent(domain)}`);
+    const tenant = response?.data;
+    if (tenant) {
+      localStorage.setItem("appname", "OpenSign™");
+      localStorage.setItem("favicon", appInfo.fev_Icon);
+      return {
+        logo: tenant.logo,
+        user: tenant.user
+      };
+    }
+  } catch (err) {
+    console.log("err in getlogo ", err);
+    localStorage.setItem("favicon", appInfo.fev_Icon);
+    if (err?.message?.includes("valid JSON")) {
+      return { logo: appInfo.applogo, user: "exist", error: "invalid_json" };
+    } else {
+      return { logo: appInfo.applogo, user: "exist" };
+    }
+  }
 };
 export const getTenantDetails = async (objectId, contactId) => {
   try {
@@ -3064,7 +3107,8 @@ export const convertBase64ToFile = async (pdfName, pdfBase64, imgType) => {
     fileNameWithUnderscore(pdfName) + (imgType ? `.${mime}` : ".pdf");
   try {
     fileName = imgType ? pdfName : fileName;
-    const pdfFile = new Parse.File(fileName, { base64: base64Str });
+    // TODO: Use documentService file upload instead
+    // const pdfFile = new Parse.File(fileName, { base64: base64Str });
     // Save the Parse File if needed
     const pdfData = await pdfFile.save();
     const pdfUrl = pdfData.url();

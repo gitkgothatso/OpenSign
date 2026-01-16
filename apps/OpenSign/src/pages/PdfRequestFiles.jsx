@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { PDFDocument } from "pdf-lib";
 import "../styles/signature.css";
-import Parse from "parse";
+import { userService } from "../services/userService";
 import axios from "axios";
 import { useDispatch, useSelector } from "react-redux";
 import RenderAllPdfPage from "../components/pdf/RenderAllPdfPage";
@@ -655,13 +655,9 @@ function PdfRequestFiles(
     if (isEnableOTP) {
       try {
         if (!currentUser?.emailVerified) {
-          const userQuery = new Parse.Query(Parse.User);
-          const getUser = await userQuery.get(currentUser?.objectId, {
-            sessionToken:
-              currentUser?.sessionToken || localStorage.getItem("accesstoken")
-          });
+          const getUser = await userService.getUserById(currentUser?.objectId || currentUser?.id);
           if (getUser) {
-            currentUser = JSON.parse(JSON.stringify(getUser));
+            currentUser = getUser;
           }
         }
         isEmailVerified = currentUser?.emailVerified;
@@ -1440,9 +1436,9 @@ function PdfRequestFiles(
       const updateExpiryDate = new Date(expiryDate).toISOString();
       const expiryIsoFormat = { iso: updateExpiryDate, __type: "Date" };
       try {
-        const serverUrl = serverUrl_fn();
-        const url = serverUrl + `/classes/contracts_Document/`;
-        const body = { ExpiryDate: expiryIsoFormat };
+        await documentService.updateDocumentExpiry(doc.objectId, updateExpiryDate);
+        /* Original Parse API code removed */
+        /*
         const res = await axios.put(url + doc.objectId, body, {
           headers: {
             "Content-Type": "application/json",
@@ -1455,7 +1451,7 @@ function PdfRequestFiles(
           let doc = pdfDetails?.[0];
           doc.ExpiryDate = expiryIsoFormat;
           setPdfDetails([doc]);
-        }
+        } */
       } catch (err) {
         console.log("err", err);
       } finally {

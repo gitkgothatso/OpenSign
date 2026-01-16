@@ -1,14 +1,15 @@
-import Parse from "parse";
+import authService from "../services/authService";
 /**
  * Function returning the queryString in which multiple hash replaced with actual values
  * @param str query string
- *  @param json localstroage data in json
+ * @param json localStorage data in json
+ * @param userObj optional user object (use this instead of Parse.User.current() for JWT auth)
  */
 
-export default function getReplacedHashQuery(str, json) {
+export default function getReplacedHashQuery(str, json, userObj = null) {
   // eslint-disable-next-line
   let reg = /(\#.*?\#)/gi;
-  const currentUser = Parse.User.current();
+  const currentUser = userObj || authService.getCurrentUser();
   const multiHash = str.match(reg);
 
   let values = {};
@@ -18,7 +19,7 @@ export default function getReplacedHashQuery(str, json) {
     key = key.substring(1, key.length - 1);
     key = key.split(".");
     if (key.length > 1) {
-      key = x.replace(reg, json[key[0]][key[1]]);
+      key = x.replace(reg, json[key[0]]?.[key[1]] || "");
     } else if (json[key[0]]) {
       key = x.replace(reg, json[key[0]]);
     } else if (key[0] === "Date") {
@@ -26,7 +27,7 @@ export default function getReplacedHashQuery(str, json) {
     } else if (key[0] === "today") {
       key = x.replace(reg, new Date().toISOString());
     } else {
-      key = x.replace(reg, currentUser.id);
+      key = x.replace(reg, currentUser?.id || currentUser?.objectId || "");
     }
     values = { ...values, [x]: key };
   });

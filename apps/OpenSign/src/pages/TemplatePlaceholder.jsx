@@ -47,7 +47,7 @@ import EditTemplate from "../components/pdf/EditTemplate";
 import AddRoleModal from "../components/pdf/AddRoleModal";
 import PlaceholderCopy from "../components/pdf/PlaceholderCopy";
 import DropdownWidgetOption from "../components/pdf/DropdownWidgetOption";
-import Parse from "parse";
+import templateService from "../services/templateService";
 import { useDispatch, useSelector } from "react-redux";
 import PdfTools from "../components/pdf/PdfTools";
 import { useTranslation } from "react-i18next";
@@ -800,33 +800,26 @@ const TemplatePlaceholder = () => {
       });
     }
     try {
-      const templateCls = new Parse.Object("contracts_Template");
-      templateCls.id = templateId;
+      // Build update data object
+      const updateData = {
+        TimeToCompleteDays: parseInt(pdfDetails?.[0]?.TimeToCompleteDays) || 15
+      };
       if (signerPos && signerPos?.length > 0) {
-        templateCls.set("Placeholders", signerPos);
+        updateData.Placeholders = signerPos;
       }
       if (signers && signers?.length > 0) {
-        templateCls.set("Signers", signers);
+        updateData.Signers = signers;
       }
       if (signatureType && signatureType?.length > 0) {
-        templateCls.set("SignatureType", signatureType);
+        updateData.SignatureType = signatureType;
       }
       if (pdfUrl) {
-        templateCls.set("URL", pdfUrl);
+        updateData.URL = pdfUrl;
       }
-      templateCls.set(
-        "TimeToCompleteDays",
-        parseInt(pdfDetails?.[0]?.TimeToCompleteDays) || 15
-      );
       if (pdfDetails[0]?.Bcc?.length) {
-        const Bcc = pdfDetails[0]?.Bcc.map((x) => ({
-          __type: "Pointer",
-          className: "contracts_Contactbook",
-          objectId: x.objectId
-        }));
-        templateCls.set("Bcc", Bcc);
+        updateData.Bcc = pdfDetails[0]?.Bcc.map((x) => x.objectId);
       }
-      const res = await templateCls.save();
+      const res = await templateService.updateTemplate(templateId, updateData);
       if (res && pdfUrl) {
         pdfDetails[0] = { ...pdfDetails[0], URL: pdfUrl };
       }
@@ -925,12 +918,7 @@ const TemplatePlaceholder = () => {
           ...Bcc,
           ...RedirectUrl
         };
-        const updateTemplate = new Parse.Object("contracts_Template");
-        updateTemplate.id = templateId;
-        for (const key in data) {
-          updateTemplate.set(key, data[key]);
-        }
-        await updateTemplate.save();
+        await templateService.updateTemplate(templateId, data);
         setIsCreateDocModal(true);
         setIsUiLoading(false);
       } catch (e) {
@@ -1305,12 +1293,7 @@ const TemplatePlaceholder = () => {
         ...Bcc,
         ...RedirectUrl
       };
-      const updateTemplateObj = new Parse.Object("contracts_Template");
-      updateTemplateObj.id = templateId;
-      for (const key in data) {
-        updateTemplateObj.set(key, data[key]);
-      }
-      await updateTemplateObj.save();
+      await templateService.updateTemplate(templateId, data);
     } catch (err) {
       console.log("error in save template", err);
     }

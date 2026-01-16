@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
-import Parse from "parse";
+import authService from "../services/authService";
+import { sendNewsletter } from "../services/userService";
+import userService from "../services/userService";
 import { appInfo } from "../constant/appinfo";
 import { NavLink, useNavigate } from "react-router";
 import {
@@ -62,7 +64,7 @@ const AddAdmin = () => {
   };
   const clearStorage = async () => {
     try {
-      await Parse.User.logOut();
+      authService.logout();
     } catch (err) {
       console.log("Err while logging out", err);
     }
@@ -105,78 +107,55 @@ const AddAdmin = () => {
         localStorage.setItem("userDetails", JSON.stringify(userDetails));
         try {
           event.preventDefault();
-          const user = new Parse.User();
-          user.set("name", name);
-          user.set("email", email?.toLowerCase()?.replace(/\s/g, ""));
-          user.set("password", password);
-          user.set("phone", phone);
-          user.set("username", email?.toLowerCase()?.replace(/\s/g, ""));
-          const userRes = await user.save();
-          if (userRes) {
-            const params = {
-              userDetails: {
-                jobTitle: jobTitle,
-                company: company,
-                name: name,
-                email: email?.toLowerCase()?.replace(/\s/g, ""),
-                phone: phone,
-                role: "contracts_Admin",
-                timezone: usertimezone
-              }
-            };
-            try {
-              const usersignup = await Parse.Cloud.run("addadmin", params);
-              if (usersignup) {
-                if (isSubscribeNews) {
-                  subscribeNewsletter();
-                }
-                handleNavigation(userRes.getSessionToken());
-              }
-            } catch (err) {
-              alert(err.message);
-              setState({ loading: false });
+          
+          // Use new Java backend signup endpoint
+          const cleanEmail = email?.toLowerCase()?.replace(/\s/g, "");
+          const signupResult = await authService.signup(
+            cleanEmail,           // username
+            cleanEmail,           // email
+            password,             // password
+            name,                 // name
+            phone,                // phone
+            company,              // company
+            jobTitle,             // jobTitle
+            "contracts_Admin",    // role (fixed for admin registration)
+            usertimezone          // timezone
+          );
+          
+          if (signupResult) {
+            if (isSubscribeNews) {
+              subscribeNewsletter();
             }
+            // Navigate with JWT token (already stored by authService)
+            handleNavigation(signupResult.jwtToken);
           }
         } catch (error) {
-          console.log("err ", error);
-          if (error.code === 202) {
-            const params = { email: email };
-            const res = await Parse.Cloud.run("getUserDetails", params);
-            // console.log("Res ", res);
-            if (res) {
-              alert(t("already-exists-this-username"));
-              setState({ loading: false });
-            } else {
-              // console.log("state.email ", email);
-              try {
-                await Parse.User.requestPasswordReset(email).then(
-                  async function (res) {
-                    if (res.data === undefined) {
-                      alert(t("verification-code-sent"));
-                    }
-                  }
-                );
-              } catch (err) {
-                console.log(err);
-              }
-              setState({ loading: false });
-            }
+          console.error("Signup error:", error);
+          setState({ loading: false });
+          
+          // Handle backend error codes
+          if (error.response?.data?.code === 202) {
+            // Email already taken
+            alert(t("already-exists-this-username"));
+          } else if (error.response?.data?.code === 203) {
+            // Username already taken
+            alert(t("already-exists-this-username"));
           } else {
-            alert(error.message);
-            setState({ loading: false });
+            // Generic error
+            const errorMsg = error.response?.data?.error || error.message || t("something-went-wrong-mssg");
+            alert(errorMsg);
           }
         }
       }
     }
   };
   const handleNavigation = async (sessionToken) => {
-    const res = await Parse.User.become(sessionToken);
-    if (res) {
-      const _user = JSON.parse(JSON.stringify(res));
-      // console.log("_user ", _user);
+    // JWT authentication - no need for Parse.User.become()
+    // Token is already validated and stored
+    const _user = await authService.getCurrentUser();
+    if (_user) {
       localStorage.setItem("accesstoken", sessionToken);
       localStorage.setItem("UserInformation", JSON.stringify(_user));
-      localStorage.setItem("accesstoken", _user.sessionToken);
       if (_user.ProfilePic) {
         localStorage.setItem("profileImg", _user.ProfilePic);
       } else {
@@ -185,11 +164,11 @@ const AddAdmin = () => {
       // Check extended class user role and tenentId
       try {
         const userSettings = appInfo.settings;
-        const extUser = await Parse.Cloud.run("getUserDetails");
+        const extUser = await userService.getCurrentUser();
         if (extUser) {
           const IsDisabled = extUser?.get("IsDisabled") || false;
           if (!IsDisabled) {
-            const userRole = extUser?.get("UserRole");
+            const userRole = extUser?.get("role"); // e.g., "contracts_Admin", alined with backend roles
             const menu =
               userRole && userSettings.find((menu) => menu.role === userRole);
             if (menu) {
@@ -258,7 +237,7 @@ const AddAdmin = () => {
   const subscribeNewsletter = async () => {
     try {
       const params = { name: name, email: email, domain: window.location.host };
-      await Parse.Cloud.run("newsletter", params);
+      await sendNewsletter(params);
       // console.log("newsletter ", newsletter);
     } catch (err) {
       console.log("err in subscribeNewsletter", err);

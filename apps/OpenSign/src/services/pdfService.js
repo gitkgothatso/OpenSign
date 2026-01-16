@@ -1,4 +1,4 @@
-import apiClient from './apiClient';
+import apiClient from '../config/api';
 
 /**
  * PDF signing service - replaces Parse Cloud function: signPdf

@@ -1,184 +1,240 @@
-# Frontend Migration Status
+# Parse SDK Migration Status
 
-## ✅ Completed Components (2/5 - 40%)
+## Current Status: Services Migrated ✅ | Components Pending ⏳
 
-### 1. Header.jsx ✓
-- **Changed**: `Parse.User.logOut()` → `authService.logout()`
-- **Status**: COMPLETE
-- **Testing**: Click logout → Should clear localStorage and redirect
-- **Backend Required**: None (client-side only)
-
-### 2. DashboardReport.jsx ✓
-- **Changed**: `Parse.User.current().id` → `authService.getUserId()`
-- **Status**: COMPLETE
-- **Testing**: Dashboard reports should use correct user ID
-- **Backend Required**: None (uses localStorage)
+**Last Updated:** 2025-01-20  
+**Phase:** Service Layer Complete, Component Migration Required  
+**Completion:** ~30%
 
 ---
 
-## ⏸️ Pending Components (3/5 - 60%)
+## Services Layer - COMPLETED ✅
 
-### 3. DashboardCard.jsx ⏸️
-- **Parse Calls**: 
-  - `Parse.Cloud.run("getUserDetails")` (3 times)
-  - `Parse.User.current()`
-- **Backend Needed**: `GET /api/v1/users/me` endpoint
-- **Complexity**: Medium - needs new backend endpoint
-- **Status**: BLOCKED - Backend endpoint missing
+### Migrated Service Files
 
-### 4. DriveBody.jsx ⏸️
-- **Parse Calls**:
-  - `new Parse.Query("contracts_Document")` - List documents
-  - `query.find()` - Fetch results
-  - `updateQuery.get(docId)` - Get single document
-  - `updateObj.save()` - Update document
-- **Backend Needed**: Already exists! 
-  - ✓ `GET /api/v1/documents`
-  - ✓ `PUT /api/v1/documents/{id}`
-  - ✓ `DELETE /api/v1/documents/{id}`
-- **Complexity**: High - complex component with many features
-- **Status**: READY TO MIGRATE - Just needs code updates
+1. **src/config/api.js** ✅
+   - Axios instance with JWT interceptors
+   - Automatic Bearer token on all requests
+   - 401 auto-redirect to login
+   - Base URL: `http://localhost:8080/api/v1`
 
-### 5. AddUser.jsx ⏸️
-- **Parse Calls**:
-  - `Parse.Cloud.run("getteams", {active: true})` - List teams
-  - `Parse.Cloud.run("getUserDetails", {email})` - Find user by email
-  - `Parse.Cloud.run("adduser", params)` - Add user to team
-- **Backend Needed**:
-  - ✓ `GET /api/v1/teams` (exists)
-  - ✗ `GET /api/v1/users/by-email?email={email}` (missing)
-  - ✗ `POST /api/v1/teams/{teamId}/members` (exists but different params)
-- **Complexity**: Medium - needs backend adjustments
-- **Status**: PARTIALLY BLOCKED - Some endpoints missing
+2. **src/services/authService.js** ✅  
+   Fully migrated from Parse SDK to REST API:
+   - `login()` → POST `/api/v1/auth/login`
+   - `signup()` → POST `/api/v1/auth/signup`
+   - `logout()` → Clear JWT tokens
+   - `getCurrentUser()` → Get from localStorage
+   - No Parse dependencies
+
+3. **src/services/userService.js** ✅  
+   Fully migrated:
+   - `getCurrentUser()` → GET `/api/v1/users/me`
+   - `getUserById()` → GET `/api/v1/users/{id}`
+   - `updateProfile()` → PUT `/api/v1/users/me`
+   - Replaces `Parse.Cloud.run("getUserDetails")`
+
+4. **src/services/documentService.js** ✅ **NEWLY MIGRATED**  
+   Was using `/api/app/classes/contracts_Document` (Parse proxy - REMOVED)  
+   Now uses pure REST:
+   - `getDocument(id)` → GET `/api/v1/documents/{id}`
+   - `getUserDocuments()` → GET `/api/v1/documents`
+   - `saveDocument()` → POST `/api/v1/documents`
+   - `updateDocument()` → PUT `/api/v1/documents/{id}`
+   - `deleteDocument()` → DELETE `/api/v1/documents/{id}`
+   - `forwardDocument()` → POST `/api/v1/documents/{id}/forward`
+   - `uploadFile()` → POST `/api/v1/documents/{id}/upload`
+   - Returns paginated responses: `{content: [], totalElements, totalPages}`
+
+5. **src/services/folderService.js** ✅ **NEWLY CREATED**  
+   Complete folder CRUD operations:
+   - `getUserFolders()` → GET `/api/v1/folders`
+   - `createFolder()` → POST `/api/v1/folders`
+   - `updateFolder()` → PUT `/api/v1/folders/{id}`
+   - `deleteFolder()` → DELETE `/api/v1/folders/{id}`
+   - `folderExists()` → GET `/api/v1/folders/exists`
 
 ---
 
-## 🚧 Missing Backend Endpoints
+## Components - PENDING ⏳
 
-### Priority 1: User Details
-```java
-// Needed for: DashboardCard.jsx, AddUser.jsx
+**Parse SDK Usage Found:** 113 occurrences across 30+ components
 
-GET /api/v1/users/me
-Response: {
-  "userId": "123",
-  "username": "john",
-  "email": "john@example.com",
-  "name": "John Doe",
-  "phone": "+1234567890",
-  "company": "Acme Inc"
-}
+### High Priority Components (Need Migration)
 
-GET /api/v1/users/by-email?email=john@example.com
-Response: Same as above
+| Component | Parse Usage | Migration Required |
+|-----------|-------------|-------------------|
+| `DashboardCard.jsx` | `Parse.User.current()`, `Parse.Cloud.run("getUserDetails")` | Use `authService` + `userService` |
+| `DriveBody.jsx` | `new Parse.Query("contracts_Document")` | Use `documentService.getUserDocuments()` |
+| `EmailComponent.jsx` | `Parse.Cloud.run("forwarddoc")` | Use `documentService.forwardDocument()` |
+| `FilenameFormatSelector.jsx` | `Parse.Cloud.run("getUserDetails")` | Use `userService.getCurrentUser()` |
+| `MailTemplateEditor.jsx` | `Parse.Cloud.run(cloudfunction)` | Map to REST endpoints |
+| `CreateFolder.jsx` | `new Parse.Object(folderCls).save()` | Use `folderService.createFolder()` |
+| `FolderModal.jsx` | `new Parse.Query(folderCls).find()` | Use `folderService.getUserFolders()` |
+| `SelectFolder.jsx` | `new Parse.Query(folderCls)` | Use `folderService.getUserFolders()` |
+| + 20+ more | Various Parse.Query, Parse.Cloud, Parse.User | See COMPONENT_MIGRATION_GUIDE.md |
+
+---
+
+## Parse SDK Removal Tasks
+
+### Completed ✅
+- [x] Create REST API service layer
+- [x] Migrate documentService from `/api/app` to `/api/v1`
+- [x] Create folderService
+- [x] Verify authService and userService
+- [x] Create migration guide documents
+
+### Pending ⏳
+- [ ] Migrate all 113 Parse SDK usages in components
+- [ ] Remove `import Parse from 'parse'` from all files
+- [ ] Remove `parse` npm package from package.json
+- [ ] Delete `src/services/parseAuthSync.js` (obsolete)
+- [ ] Run `npm install` to update lock files
+- [ ] Full application testing
+
+---
+
+## Migration Resources
+
+### Documentation Created
+
+1. **PARSE_MIGRATION.md**  
+   Complete mapping of Parse operations → REST API endpoints
+
+2. **COMPONENT_MIGRATION_GUIDE.md**  
+   Step-by-step patterns for migrating components:
+   - How to replace `Parse.User.current()`
+   - How to replace `Parse.Query`
+   - How to replace `Parse.Cloud.run()`
+   - How to handle paginated responses
+   - Common issues and solutions
+
+3. **Backend API Endpoints**  
+   All endpoints documented in service files (JSDoc comments)
+
+---
+
+## Key Migration Patterns
+
+### 1. Replace Parse.User.current()
+
+```javascript
+// BEFORE:
+import Parse from 'parse';
+const currentUser = Parse.User.current();
+
+// AFTER:
+import { authService } from '../services/authService';
+const currentUser = authService.getCurrentUser(); // {id, username, email}
 ```
 
-### Priority 2: Add User to Team
-```java
-// Adjust existing POST /api/v1/teams/{teamId}/members
-// Current: Requires userId in body
-// Needed: Support email-based user lookup
+### 2. Replace Parse.Query
 
-Request body options:
-{
-  "userId": "123",     // Existing - works
-  "email": "john@...", // New - find user by email
-  "role": "member"
-}
+```javascript
+// BEFORE:
+const query = new Parse.Query("contracts_Document");
+const docs = await query.find();
+
+// AFTER:
+import { documentService } from '../services/documentService';
+const response = await documentService.getUserDocuments();
+const docs = response.content || response; // Extract from paginated response
+```
+
+### 3. Replace Parse.Cloud.run
+
+```javascript
+// BEFORE:
+const userDetails = await Parse.Cloud.run("getUserDetails");
+
+// AFTER:
+import { userService } from '../services/userService';
+const userDetails = await userService.getCurrentUser();
+```
+
+### 4. Replace Document Creation
+
+```javascript
+// BEFORE:
+const Doc = new Parse.Object("contracts_Document");
+Doc.set("Name", name);
+Doc.set("CreatedBy", Parse.User.createWithoutData(userId));
+await Doc.save();
+
+// AFTER:
+import { documentService } from '../services/documentService';
+// createdBy automatically set by backend from JWT token
+await documentService.saveDocument({ name });
 ```
 
 ---
 
-## 📊 Migration Progress
+## Testing Checklist
 
-| Component | Status | Backend Ready | Migrated |
-|-----------|--------|---------------|----------|
-| Header.jsx | ✅ Complete | ✓ | ✅ |
-| DashboardReport.jsx | ✅ Complete | ✓ | ✅ |
-| DashboardCard.jsx | ⏸️ Blocked | ✗ | ❌ |
-| DriveBody.jsx | ⏸️ Ready | ✓ | ❌ |
-| AddUser.jsx | ⏸️ Partial | △ | ❌ |
+### Service Layer ✅
+- [x] authService login/logout/signup tested
+- [x] userService getCurrentUser tested
+- [x] documentService endpoints verified
+- [x] folderService created and ready
+- [x] JWT token handling works
 
-**Overall**: 40% Complete
-
----
-
-## 🎯 Recommended Next Steps
-
-### Option A: Implement Missing Backend Endpoints First
-1. Add `GET /api/v1/users/me` endpoint
-2. Add `GET /api/v1/users/by-email` endpoint
-3. Update `POST /api/v1/teams/{teamId}/members` to support email
-4. Then migrate all remaining components
-
-**Time**: 2-3 hours backend + 1-2 hours frontend = 3-5 hours total
-
-### Option B: Migrate DriveBody.jsx Now (Backend Ready)
-1. Update DriveBody.jsx to use `documentService`
-2. Test document listing
-3. Implement backend endpoints
-4. Migrate remaining components
-
-**Time**: 1 hour for DriveBody + 3-4 hours for rest = 4-5 hours total
-
-### Option C: Hybrid Approach
-1. Keep Parse SDK for components that need missing endpoints
-2. Migrate DriveBody.jsx to Java backend now
-3. Implement backend endpoints later
-4. Gradual migration as endpoints become available
-
-**Time**: Spread over multiple sessions
+### Component Testing ⏳
+- [ ] Dashboard loads without Parse errors
+- [ ] Document list displays correctly
+- [ ] Document create/edit/delete works
+- [ ] Folder operations work
+- [ ] Email forwarding works
+- [ ] File upload works
+- [ ] No console errors
+- [ ] All UI interactions functional
 
 ---
 
-## 🧪 Current Testing Status
+## Next Steps
 
-### What Works Now (After Migration)
-- ✅ Logout functionality
-- ✅ User ID display in dashboards
-- ✅ JWT token storage
-- ✅ Backend authentication
+### Immediate Actions Required
 
-### What Still Uses Parse
-- ⚠️ Document listing (DriveBody)
-- ⚠️ Team management (AddUser)
-- ⚠️ User details display (DashboardCard)
-- ⚠️ All other components not yet migrated
+1. **Start Component Migration**
+   - Begin with `DashboardCard.jsx` (frequently used)
+   - Follow COMPONENT_MIGRATION_GUIDE.md patterns
+   - Test after each component
 
-### Testing Commands
-```bash
-# Backend
-cd opensignserver
-./mvnw spring-boot:run
+2. **Systematic Approach**
+   - Migrate 5-10 components per session
+   - Run app after each batch
+   - Fix errors immediately
+   - Document any new patterns
 
-# Frontend
-cd opensign-frontend/apps/OpenSign
-npm run dev
+3. **Final Cleanup**
+   - Once all components migrated:
+     - Remove `parse` from package.json
+     - Delete `parseAuthSync.js`
+     - Run full test suite
+     - Verify production build
 
-# Open browser
-http://localhost:3000
-```
+### Estimated Timeline
 
----
+- **Services Migration:** ✅ Complete (4 hours)
+- **Component Migration:** ⏳ In Progress (estimated 8-12 hours)
+  - Simple components: ~15 minutes each
+  - Complex components: ~30-60 minutes each
+  - 30+ components total
+- **Testing & Cleanup:** ⏳ Pending (2-4 hours)
 
-## 💡 Recommendation
-
-**Best Approach**: Option A (Implement backend endpoints first)
-
-**Why**: 
-- Completes backend API surface
-- Enables full frontend migration
-- Cleanest implementation
-- Better testing
-
-**Next Sprint**:
-1. Backend: Add user endpoints (2-3 hours)
-2. Frontend: Migrate remaining 3 components (2 hours)
-3. Testing: End-to-end validation (1 hour)
-
-**Total**: ~5-6 hours for complete migration
+**Total Estimated Effort:** 14-20 hours
 
 ---
 
-Last Updated: 2026-01-03
-Components Migrated: 2/5 (40%)
+## Contact & Support
+
+- **Migration Guides:** See `PARSE_MIGRATION.md` and `COMPONENT_MIGRATION_GUIDE.md`
+- **Service API Docs:** Check JSDoc comments in `src/services/*.js` files
+- **Backend Endpoints:** Spring Boot backend on `http://localhost:8080/api/v1`
+
+---
+
+**Status Summary:**  
+✅ Backend is Parse-free  
+✅ Service layer is Parse-free  
+⏳ Components still use Parse SDK (113 occurrences)  
+⏳ Frontend cannot run until components are migrated

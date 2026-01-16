@@ -1,7 +1,7 @@
 import { generateTitleFromFilename } from "../constant/Utils";
 import { base64StringtoFile, uploadFile } from "./fileUtils";
 import { sanitizeFileName } from "./sanitizeFileName";
-import Parse from "parse";
+import signatureService from "../services/signatureService";
 // `handlesavesign` is used to save signature, initials, stamp as a default
 export const saveToMySign = async (widget) => {
   const base64 = widget?.base64;
@@ -30,7 +30,7 @@ export const saveToMySign = async (widget) => {
       } else if (widget?.type === "stamp") {
         params.stamp = fileUrl; // save stamp image url
       }
-      const signRes = await Parse.Cloud.run("savesignature", params);
+      const signRes = await signatureService.manageSignature(params);
       return { base64File: base64, id: signRes?.id };
     } catch (err) {
       console.log("Err while saving signature", err);

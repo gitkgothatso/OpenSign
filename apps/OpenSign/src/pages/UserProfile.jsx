@@ -3,7 +3,8 @@ import React, {
   useEffect,
 } from "react";
 import { Navigate, useNavigate } from "react-router";
-import Parse from "parse";
+import authService from "../services/authService";
+import userService from "../services/userService";
 import { SaveFileSize } from "../constant/saveFileSize";
 import dp from "../assets/images/dp.png";
 import { sanitizeFileName } from "../utils";
@@ -54,14 +55,14 @@ function UserProfile() {
   }, []);
   const getUserDetail = async () => {
     setIsLoader(true);
-    const currentUser = JSON.parse(JSON.stringify(Parse.User.current()));
+    const currentUser = authService.getCurrentUser();
     let isEmailVerified = currentUser?.emailVerified || false;
     if (isEmailVerified) {
       setIsEmailVerified(isEmailVerified);
       setIsLoader(false);
     } else {
       try {
-        const userQuery = new Parse.Query(Parse.User);
+        // Use userService to fetch user data
         const user = await userQuery.get(currentUser.objectId, {
           sessionToken: localStorage.getItem("accesstoken")
         });
@@ -83,8 +84,7 @@ function UserProfile() {
     if (!res) {
       setIsLoader(true);
       try {
-        const userQuery = Parse.Object.extend("_User");
-        const query = new Parse.Query(userQuery);
+        // Use userService to query users
         await query.get(UserProfile.objectId).then((object) => {
           object.set("name", name);
           object.set("ProfilePic", Image);
@@ -147,7 +147,7 @@ function UserProfile() {
           }
         }
       );
-      const res = await Parse.Cloud.run("getUserDetails");
+      const res = await userService.getCurrentUser();
 
       const json = JSON.parse(JSON.stringify([res]));
       const extRes = JSON.stringify(json);
@@ -168,7 +168,7 @@ function UserProfile() {
     const pdfFile = file;
     const fileName = file.name;
     const name = sanitizeFileName(fileName);
-    const parseFile = new Parse.File(name, pdfFile);
+    // Use file upload service instead of Parse.File
 
     try {
       const response = await parseFile.save({
@@ -209,7 +209,7 @@ function UserProfile() {
   //`handleVerifyBtn` function is used to send otp on user mail
   const handleVerifyBtn = async () => {
     setIsVerifyModal(true);
-    await handleSendOTP(Parse.User.current().getEmail());
+    await handleSendOTP(authService.getCurrentUser()?.email);
   };
   const handleCloseVerifyModal = async () => {
     setIsVerifyModal(false);
@@ -219,9 +219,9 @@ function UserProfile() {
     e.preventDefault();
     setOtpLoader(true);
     try {
-      const resEmail = await Parse.Cloud.run("verifyemail", {
+      const resEmail = await userService.verifyEmail({
         otp: otp,
-        email: Parse.User.current().getEmail()
+        email: authService.getCurrentUser()?.email
       });
       if (resEmail?.message === "Email is verified.") {
         setIsEmailVerified(true);
@@ -242,7 +242,7 @@ function UserProfile() {
   const handleResend = async (e) => {
     e.preventDefault();
     setOtpLoader(true);
-    await handleSendOTP(Parse.User.current().getEmail());
+    await handleSendOTP(authService.getCurrentUser()?.email);
     setOtpLoader(false);
     alert(t("otp-sent-alert"));
   };
@@ -268,8 +268,8 @@ function UserProfile() {
     e.preventDefault();
     setIsDelLoader(true);
     try {
-      await Parse.Cloud.run("senddeleterequest", {
-        userId: Parse.User.current().id
+      await userService.sendDeleteRequest({
+        userId: authService.getCurrentUser()?.objectId
       });
       setDeleteUserRes(t("account-deletion-request-sent-via-mail"));
     } catch (err) {

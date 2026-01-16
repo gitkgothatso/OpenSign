@@ -4,7 +4,7 @@ import apiClient from '../config/api';
 export const reportService = {
   /**
    * Get documents for a specific dashboard report.
-   * Replaces Parse.Cloud.run("getReport")
+   * Replaced Parse.Cloud.run("getReport") with REST API
    * 
    * @param {string} reportId - Report identifier (e.g., '4Hhwbp482K' for "Need your sign")
    * @param {number} skip - Number of records to skip (pagination)

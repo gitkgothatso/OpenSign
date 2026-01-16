@@ -1,5 +1,6 @@
 import React, { useEffect } from "react";
-import Parse from "parse";
+import authService from "../services/authService";
+import userService from "../services/userService";
 import { Outlet } from "react-router";
 import { saveLanguageInLocal } from "../constant/Utils";
 import { useTranslation } from "react-i18next";
@@ -9,11 +10,8 @@ const ValidateRoute = () => {
     (async () => {
       if (localStorage.getItem("accesstoken")) {
         try {
-          // Use the session token to validate the user
-          const userQuery = new Parse.Query(Parse.User);
-          const user = await userQuery.get(Parse?.User?.current()?.id, {
-            sessionToken: localStorage.getItem("accesstoken")
-          });
+          // Validate user with JWT token
+          const user = await authService.getCurrentUser();
           if (!user) {
             handlelogout();
           }

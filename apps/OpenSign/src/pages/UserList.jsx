@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import Parse from "parse";
+import { getUserListByOrg, resetUserPassword } from "../services/userService";
 import Alert from "../primitives/Alert";
 import Loader from "../primitives/Loader";
 import { useLocation } from "react-router";
@@ -117,9 +117,10 @@ const UserList = () => {
             : false;
         setIsAdmin(admin);
       }
-      const res = await Parse.Cloud.run("getuserlistbyorg", {
-        organizationId: extUser.OrganizationId.objectId
-      });
+
+      const tenantIdStr = extUser.tenantId.objectId; 
+
+      const res = await getUserListByOrg(tenantIdStr);
       const _userRes = JSON.parse(JSON.stringify(res));
       setUserList(_userRes);
     } catch (err) {
@@ -178,10 +179,8 @@ const UserList = () => {
       newArray[index] = { ...newArray[index], IsDisabled: !IsDisabled };
       setUserList(newArray);
       try {
-        const extUser = new Parse.Object("contracts_Users");
-        extUser.id = user.objectId;
-        extUser.set("IsDisabled", !IsDisabled);
-        await extUser.save();
+        // Update user disabled status via userService
+        await userService.updateProfile({ id: user.objectId, IsDisabled: !IsDisabled });
         showAlert(
           !IsDisabled === true ? "danger" : "success",
           !IsDisabled === true ? t("user-deactivated") : t("user-activated")
@@ -269,7 +268,7 @@ const UserList = () => {
     setIsActModal({});
     try {
       const params = { userId, password };
-      await Parse.Cloud.run("resetpassword", params);
+      await resetUserPassword(params);
       showAlert("success", t("password-has-been-reset"));
     } catch (err) {
       console.log("err while reset password", err);

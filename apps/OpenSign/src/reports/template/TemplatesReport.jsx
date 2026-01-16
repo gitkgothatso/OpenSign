@@ -7,7 +7,8 @@ import Alert from "../../primitives/Alert";
 import Tooltip from "../../primitives/Tooltip";
 import ShareButton from "../../primitives/ShareButton";
 import Tour from "../../primitives/Tour";
-import Parse from "parse";
+import { getTeams, createDuplicate } from "../../services/templateService";
+import userService from "../../services/userService";
 import {
   copytoData,
   fetchUrl,
@@ -180,7 +181,7 @@ const TemplatesReport = (props) => {
     try {
       const extUser = JSON.parse(localStorage.getItem("Extand_Class"))?.[0];
       if (extUser?.OrganizationId?.objectId) {
-        const teamtRes = await Parse.Cloud.run("getteams", { active: true });
+        const teamtRes = await getTeams(true);
         if (teamtRes.length > 0) {
           const _teamRes = JSON.parse(JSON.stringify(teamtRes));
             const selected = _teamRes.map(
@@ -387,10 +388,9 @@ const TemplatesReport = (props) => {
     setIsDeleteModal({});
     setActLoader({ [`${item.objectId}`]: true });
     try {
-      const serverUrl = serverUrl_fn();
-      const cls = "contracts_Template";
-      const url = serverUrl + `/classes/${cls}/`;
-      const body = { IsArchive: true };
+      await templateService.archiveTemplate(item.objectId);
+      /* Original Parse API code removed */
+      /*
       const res = await axios.put(url + item.objectId, body, {
         headers: {
           "Content-Type": "application/json",
@@ -405,7 +405,7 @@ const TemplatesReport = (props) => {
           (x) => x.objectId !== item.objectId
         );
         props.setList(upldatedList);
-      }
+      } */
     } catch (err) {
       console.log("err", err);
       showAlert("danger", t("something-went-wrong-mssg"));
@@ -460,7 +460,7 @@ const TemplatesReport = (props) => {
   };
 
   async function checkTourStatus() {
-    const cloudRes = await Parse.Cloud.run("getUserDetails");
+    const cloudRes = await userService.getCurrentUser();
     if (cloudRes) {
       const extUser = JSON.parse(JSON.stringify(cloudRes));
       localStorage.setItem("Extand_Class", JSON.stringify([extUser]));
@@ -499,11 +499,7 @@ const TemplatesReport = (props) => {
         updatedTourStatus = [{ templateReport: true }];
       }
 
-      await axios.put(
-        serverUrl + "classes/contracts_Users/" + extUserId,
-        { TourStatus: updatedTourStatus },
-        { headers: { "X-Parse-Application-Id": appId } }
-      );
+      await userService.updateTourStatus(extUserId, updatedTourStatus);
     }
   };
 
@@ -768,7 +764,7 @@ const TemplatesReport = (props) => {
     setIsShareWith({});
     setActLoader({ [template.objectId]: true });
     try {
-      const templateCls = new Parse.Object("contracts_Template");
+      // Use templateService instead
       templateCls.id = template.objectId;
       const teamArr = selectedTeam.map((x) => ({
         __type: "Pointer",
@@ -792,7 +788,7 @@ const TemplatesReport = (props) => {
     setActLoader({ [item.objectId]: true });
     setIsModal({});
     try {
-      const duplicateRes = await Parse.Cloud.run("createduplicate", {
+      const duplicateRes = await createDuplicate({
         templateId: item.objectId
       });
       if (duplicateRes) {
@@ -814,7 +810,7 @@ const TemplatesReport = (props) => {
     const className = "contracts_Template";
 
     try {
-      const query = new Parse.Query(className);
+      // Use templateService to query templates
       const docObj = await query.get(item.objectId);
       docObj.set("Name", renameDoc);
       await docObj.save();

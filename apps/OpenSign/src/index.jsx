@@ -5,16 +5,17 @@ import App from "./App";
 import { showUpgradeProgress, hideUpgradeProgress } from "./utils";
 import { Provider } from "react-redux";
 import { store } from "./redux/store";
-import Parse from "parse";
+// Parse SDK removed - using REST API with JWT authentication
 import "./polyfills";
 import { serverUrl_fn } from "./constant/appinfo";
 import "./i18n";
 
-const appId =
-  import.meta.env.VITE_APPID || process.env.REACT_APP_APPID || "opensign";
-const serverUrl = serverUrl_fn();
-Parse.initialize(appId);
-Parse.serverURL = serverUrl;
+// Parse configuration no longer needed
+// const appId = import.meta.env.VITE_APPID || process.env.REACT_APP_APPID || "opensign";
+// const serverUrl = serverUrl_fn();
+// Parse initialization removed - application now uses REST API
+// const appId = import.meta.env.VITE_APPID || process.env.REACT_APP_APPID || "opensign";
+// const serverUrl = serverUrl_fn();
 
 if (localStorage.getItem("showUpgradeProgress")) {
   showUpgradeProgress();

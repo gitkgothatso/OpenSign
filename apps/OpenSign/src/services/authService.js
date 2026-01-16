@@ -124,6 +124,21 @@ export const authService = {
         console.warn('Please log in again to use the new backend');
       }
     }
+  },
+
+  // Request password reset email
+  resetPassword: async (email) => {
+    const response = await apiClient.post('/auth/reset-password', { email });
+    return response.data;
+  },
+
+  // Change password for logged-in user
+  changePassword: async (currentPassword, newPassword) => {
+    const response = await apiClient.post('/auth/change-password', {
+      currentPassword,
+      newPassword
+    });
+    return response.data;
   }
 };
 

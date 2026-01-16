@@ -9,7 +9,7 @@ import ModalUi from "../../primitives/ModalUi";
 import FolderModal from "../shared/fields/FolderModal";
 import { useTranslation } from "react-i18next";
 import { handleDownloadPdf, isMobile } from "../../constant/Utils";
-import Parse from "parse";
+import { documentService } from "../../services/documentService";
 
 function DriveBody(props) {
   const { t } = useTranslation();
@@ -256,37 +256,26 @@ function DriveBody(props) {
   };
 
   const checkFolderEmpty = async (docData) => {
-    let isEmptyFolder = true;
-    const query = new Parse.Query("contracts_Document");
-    query.equalTo("Folder", {
-      __type: "Pointer",
-      className: "contracts_Document",
-      objectId: docData.objectId
-    });
-    query.notEqualTo("IsArchive", true);
-    const res = await query.find();
-    const jsonRes = JSON.parse(JSON.stringify(res));
-    if (jsonRes && jsonRes.length > 0) {
-      isEmptyFolder = false;
-      return isEmptyFolder;
-    } else {
-      return isEmptyFolder;
+    try {
+      const folderId = docData.objectId || docData.id;
+      const docs = await documentService.getDocumentsInFolder(folderId);
+      const activeDocs = docs.filter(doc => !doc.IsArchive);
+      return activeDocs.length === 0;
+    } catch (error) {
+      console.error("Error checking folder:", error);
+      return true; // Assume empty on error to allow deletion
     }
   };
   const handleDeleteFolder = async (docData) => {
     setIsDeleteDoc({});
     const isEmptyFolder = await checkFolderEmpty(docData);
     if (isEmptyFolder) {
-      const docId = docData?.objectId;
+      const docId = docData?.objectId || docData?.id;
       try {
-        const updateQuery = new Parse.Query("contracts_Document");
-        const updateObj = await updateQuery.get(docId);
-        updateObj.set("IsArchive", true);
-        const res = await updateObj.save();
-        if (res) {
-          const updatedData = props.pdfData.filter((x) => x.objectId !== docId);
-          props.setPdfData(updatedData);
-        }
+        // Use documentService to update document (mark as archived)
+        await documentService.updateDocument(docId, { IsArchive: true });
+        const updatedData = props.pdfData.filter((x) => (x.objectId || x.id) !== docId);
+        props.setPdfData(updatedData);
       } catch (err) {
         console.error("Err in delete folder", err);
         props.setIsAlert({

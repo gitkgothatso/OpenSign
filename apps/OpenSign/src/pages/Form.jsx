@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 import { formJson } from "../json/FormJson";
-import Parse from "parse";
+import authService from "../services/authService";
+import documentService from "../services/documentService";
+import templateService from "../services/templateService";
 import Alert from "../primitives/Alert";
 import SelectFolder from "../components/shared/fields/SelectFolder";
 import SignersInput from "../components/shared/fields/SignersInput";
@@ -257,7 +259,7 @@ const Forms = (props) => {
             const config = {
               headers: {
                 "content-type": "multipart/form-data",
-                sessiontoken: Parse.User.current().getSessionToken()
+                sessiontoken: localStorage.getItem("jwtToken")
               },
               signal: abortController.signal,
               onUploadProgress: (progressEvent) => {
@@ -379,7 +381,7 @@ const Forms = (props) => {
       }
       setIsSubmit(true);
       try {
-        const currentUser = Parse.User.current();
+        const currentUser = authService.getCurrentUser();
         // Get userId from multiple sources (JWT migration compatibility)
         const userId = currentUser?.id || localStorage.getItem('userId') || extUserData?.UserId?.objectId;
         
@@ -389,22 +391,30 @@ const Forms = (props) => {
           return;
         }
         
-        const object = new Parse.Object(props.Cls);
-        object.set("Name", formData?.Name);
-        object.set("Description", formData?.Description);
-        object.set("Note", formData?.Note);
+        // Build data object for REST API (matching CreateDocumentRequest DTO)
+        const documentData = {
+          name: formData?.Name,
+          description: formData?.Description,
+          note: formData?.Note,
+          url: fileupload,
+          type: props.title === "Sign Yourself" ? "self-sign" : props.title === "New Template" ? "template" : "contract"
+        };
+        
+        // Add folder if specified
+        if (folder && folder.ObjectId) {
+          documentData.folderId = folder.ObjectId;
+        }
+        
         if (props.title === "Request Signatures") {
             if (
               extUserData?.TenantId?.RequestBody &&
               extUserData?.TenantId?.RequestSubject
             ) {
-              object.set("RequestBody", extUserData?.TenantId?.RequestBody);
-              object.set(
-                "RequestSubject",
-                extUserData?.TenantId?.RequestSubject
-              );
+              documentData.requestBody = extUserData?.TenantId?.RequestBody;
+              documentData.requestSubject = extUserData?.TenantId?.RequestSubject;
             }
         }
+        
         if (props.title !== "Sign Yourself") {
           const isChecked = formData.SendinOrder === "false" ? false : true;
           const isTourEnabled =
@@ -417,49 +427,35 @@ const Forms = (props) => {
             alert(t("only-15-reminder-allowed"));
             return;
           }
-          object.set("SendinOrder", isChecked);
-          object.set("AutomaticReminders", AutomaticReminders);
-          object.set("RemindOnceInEvery", remindOnceInEvery);
-          object.set("IsTourEnabled", isTourEnabled);
-          object.set("TimeToCompleteDays", TimeToCompleteDays);
-          object.set("PenColors", selectedColors);
-
-            object.set("AllowModifications", false);
-            object.set("IsEnableOTP", false);
-            if (formData.NotifyOnSignatures !== undefined) {
-              object.set("NotifyOnSignatures", formData.NotifyOnSignatures);
-            }
+          documentData.sendInOrder = isChecked;
+          documentData.autoReminder = AutomaticReminders;
+          documentData.remindOnceInEvery = remindOnceInEvery;
+          documentData.isTourEnabled = isTourEnabled;
+          documentData.timeToCompleteDays = TimeToCompleteDays;
+          documentData.penColors = selectedColors;
+          documentData.allowModifications = false;
+          documentData.isEnableOTP = false;
+          if (formData.NotifyOnSignatures !== undefined) {
+            documentData.notifyOnSignatures = formData.NotifyOnSignatures;
+          }
           if (formData?.RedirectUrl) {
-            object.set("RedirectUrl", formData.RedirectUrl);
+            documentData.redirectUrl = formData.RedirectUrl;
           }
         }
-        object.set("URL", fileupload);
-        object.set("CreatedBy", Parse.User.createWithoutData(userId));
-        if (folder && folder.ObjectId) {
-          object.set("Folder", {
-            __type: "Pointer",
-            className: props.Cls,
-            objectId: folder.ObjectId
-          });
-        }
+        
+        // Add signers if present
         if (signers && signers.length > 0) {
-          object.set("Signers", signers);
+          documentData.signers = signers;
         }
-        if (bcc && bcc.length > 0) {
-          const Bcc = bcc.map((x) => ({
-            __type: "Pointer",
-            className: "contracts_Contactbook",
-            objectId: x.objectId
-          }));
-          object.set("Bcc", Bcc);
-        }
-        const ExtCls = JSON.parse(localStorage.getItem("Extand_Class"));
-        object.set("ExtUserPtr", {
-          __type: "Pointer",
-          className: "contracts_Users",
-          objectId: ExtCls[0].objectId
-        });
-        const res = await object.save();
+        
+        // Note: Bcc and other fields not yet supported by backend
+        // Will be added in future iterations
+        
+        // Call appropriate service based on document type
+        const isTemplate = props.title === "New Template";
+        const res = isTemplate 
+          ? await templateService.createTemplate(documentData)
+          : await documentService.saveDocument(documentData);
         if (res) {
           setSigners([]);
           setBcc([]);
@@ -491,10 +487,11 @@ const Forms = (props) => {
           setFileUpload("");
           setSelectedFiles([]);
           setpercentage(0);
-          navigate(`/${props?.redirectRoute}/${res.id}`);
+          navigate(`/${props?.redirectRoute}/${res.objectId || res.id}`);
         }
       } catch (err) {
         console.log("err ", err);
+        console.log("err.response.data ", err?.response?.data);
         if (err?.code === 209) {
           dispatch(sessionStatus(false));
         } else if (err.message === "only 15 reminder allowed") {

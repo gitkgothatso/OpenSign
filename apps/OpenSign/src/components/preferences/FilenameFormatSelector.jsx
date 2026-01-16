@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import Parse from "parse";
+import { userService } from "../../services/userService";
 import { buildDownloadFilename } from "../../utils";
 import { useTranslation } from "react-i18next";
 import { Tooltip as ReactTooltip } from "react-tooltip";
@@ -31,9 +31,9 @@ const FilenameFormatSelector = ({ fileNameFormat, setFileNameFormat }) => {
     (async () => {
       try {
         if (!currentUser) return;
-        const rec = await Parse.Cloud.run("getUserDetails");
+        const rec = await userService.getCurrentUser();
         if (rec) {
-          const fmt = rec.get("DownloadFilenameFormat");
+          const fmt = rec.DownloadFilenameFormat || rec.get?.("DownloadFilenameFormat");
           if (fmt) setValue(fmt);
         }
       } catch (e) {

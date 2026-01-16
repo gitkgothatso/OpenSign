@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import Parse from "parse";
+import authService from "../services/authService";
+import userService from "../services/userService";
 import { useDispatch } from "react-redux";
 import axios from "axios";
 import { NavLink, useNavigate, useLocation } from "react-router";
@@ -57,7 +59,7 @@ function Login() {
 
 
   const setLocalVar = (user) => {
-    localStorage.setItem("accesstoken", user.sessionToken);
+    // localStorage.setItem("accesstoken", user.sessionToken); // Deprecated: Using jwtToken now
     localStorage.setItem("UserInformation", JSON.stringify(user));
     localStorage.setItem("userEmail", user.email);
     if (user.ProfilePic) {
@@ -100,38 +102,52 @@ function Login() {
     setState({ ...state, [name]: value });
   };
 
-  const handleLogin = async (
-  ) => {
-    const email = state?.email
-    const password = state?.password
+  const handleLogin = async () => {
+    const email = state?.email;
+    const password = state?.password;
 
     if (!email || !password) {
       return;
     }
+    
     localStorage.removeItem("accesstoken");
     try {
       setState({ ...state, loading: true });
       localStorage.setItem("appLogo", appInfo.applogo);
-      const _user = await Parse.Cloud.run("loginuser", { email, password });
-      if (!_user) {
+      
+      // Use new Java backend authentication
+      const authResponse = await authService.login(email, password);
+      
+      if (!authResponse) {
         setState({ ...state, loading: false });
         return;
       }
-      // Get extended user data (including 2FA status) using cloud function
+      
+      // Store auth data (already done by authService.login)
+      // Get user details
       try {
-        await Parse.User.become(_user.sessionToken);
-        setLocalVar(_user);
+        const userDetails = await userService.getCurrentUser();
+        setLocalVar({
+          sessionToken: authResponse.jwtToken,
+          email: authResponse.email,
+          ProfilePic: userDetails.profilePic || ""
+        });
         await continueLoginFlow();
       } catch (error) {
-        console.error("Error checking 2FA status:", error);
+        console.error("Error fetching user details:", error);
         showToast("danger", t("something-went-wrong-mssg"));
       }
     } catch (error) {
       console.error("Error while logging in user", error);
-      if (error?.code === 1001) {
+      const errorCode = error.response?.data?.code;
+      const errorMsg = error.response?.data?.error;
+      
+      if (errorCode === 1001) {
         showToast("danger", t("action-prohibited"));
-      } else {
+      } else if (errorCode === 101 || errorCode === 205) {
         showToast("danger", t("invalid-username-password-region"));
+      } else {
+        showToast("danger", errorMsg || t("something-went-wrong-mssg"));
       }
     }
   };
@@ -158,7 +174,7 @@ function Login() {
       }
     });
     await Parse.User.become(sessionToken).then(() => {
-      window.localStorage.setItem("accesstoken", sessionToken);
+      // window.localStorage.setItem("accesstoken", sessionToken); // Deprecated: Using jwtToken now
     });
     if (res.data) {
       let _user = res.data;
@@ -166,11 +182,11 @@ function Login() {
       // Check extended class user role and tenentId
       try {
         const userSettings = appInfo.settings;
-        const extUser = await Parse.Cloud.run("getUserDetails");
+        const extUser = await userService.getCurrentUser();
         if (extUser) {
-          const IsDisabled = extUser?.get("IsDisabled") || false;
+          const IsDisabled = extUser?.IsDisabled || false;
           if (!IsDisabled) {
-            const userRole = extUser?.get("UserRole");
+            const userRole = extUser?.UserRole;
             const menu =
               userRole && userSettings.find((menu) => menu.role === userRole);
             if (menu) {
@@ -178,7 +194,7 @@ function Login() {
               const redirectUrl =
                 location?.state?.from || `/${menu.pageType}/${menu.pageId}`;
               const _role = _currentRole.replace("contracts_", "");
-              const extInfo = JSON.parse(JSON.stringify(extUser));
+              const extInfo = extUser;
               localStorage.setItem("_user_role", _role);
               localStorage.setItem("Extand_Class", JSON.stringify([extUser]));
               localStorage.setItem("userEmail", extInfo?.Email);
@@ -226,16 +242,16 @@ function Login() {
       const _user = user.toJSON();
       setLocalVar(_user);
       const userSettings = appInfo.settings;
-      const extUser = await Parse.Cloud.run("getUserDetails");
+      const extUser = await userService.getCurrentUser();
       if (extUser) {
-        const IsDisabled = extUser?.get("IsDisabled") || false;
+        const IsDisabled = extUser?.IsDisabled || false;
         if (!IsDisabled) {
-          const userRole = extUser.get("UserRole");
+          const userRole = extUser.UserRole;
           const _currentRole = userRole;
           const menu =
             userRole && userSettings.find((menu) => menu.role === userRole);
           if (menu) {
-            const extInfo = JSON.parse(JSON.stringify(extUser));
+            const extInfo = extUser;
             const _role = _currentRole.replace("contracts_", "");
             localStorage.setItem("_user_role", _role);
             const redirectUrl =
@@ -282,41 +298,44 @@ function Login() {
     e.preventDefault();
     if (userDetails.Destination && userDetails.Company) {
       setThirdpartyLoader(true);
-      const payload = { sessionToken: localStorage.getItem("accesstoken") };
       const userInformation = JSON.parse(
         localStorage.getItem("UserInformation")
       );
-      if (payload && payload.sessionToken) {
-        const params = {
-          userDetails: {
-            name: userInformation.name,
-            email: userInformation.email,
-            phone: userInformation?.phone || "",
-            role: "contracts_User",
-            company: userDetails.Company,
-            jobTitle: userDetails.Destination,
-            timezone: usertimezone
-          }
-        };
-        const userSignUp = await Parse.Cloud.run("usersignup", params);
-        if (userSignUp && userSignUp.sessionToken) {
+      
+      try {
+        // Use authService.signup instead of Parse.Cloud.run
+        const userSignUp = await authService.signup(
+          userInformation.email, // username (using email)
+          userInformation.email,
+          Math.random().toString(36).slice(-12), // temporary password for OAuth users
+          userInformation.name,
+          userInformation?.phone || "",
+          userDetails.Company,
+          userDetails.Destination, // jobTitle
+          "contracts_User",
+          usertimezone
+        );
+        
+        if (userSignUp && userSignUp.jwtToken) {
           const LocalUserDetails = {
             name: userInformation.name,
             email: userInformation.email,
             phone: userInformation?.phone || "",
             company: userDetails.Company,
-            jobTitle: userDetails.JobTitle
+            jobTitle: userDetails.Destination
           };
           localStorage.setItem("userDetails", JSON.stringify(LocalUserDetails));
-          thirdpartyLoginfn(userSignUp.sessionToken);
+          
+          // Continue login flow with the user data
+          await continueLoginFlow();
         } else {
-          alert(userSignUp.message);
+          alert(userSignUp.message || t("signup-failed"));
         }
-      } else if (
-        payload &&
-        payload.message.replace(/ /g, "_") === "Internal_server_err"
-      ) {
-        alert(t("server-error"));
+      } catch (error) {
+        console.error("Signup error:", error);
+        alert(error.response?.data?.message || t("server-error"));
+      } finally {
+        setThirdpartyLoader(false);
       }
     } else {
       showToast("warning", t("fill-required-details!"));
@@ -353,28 +372,40 @@ function Login() {
   const continueLoginFlow = async () => {
     try {
       const userSettings = appInfo.settings;
-      const extUser = await Parse.Cloud.run("getUserDetails");
+      console.log("Fetching user details...");
+      const extUser = await userService.getCurrentUser();
+      console.log("User details received:", extUser);
+      
       if (extUser) {
-        const IsDisabled = extUser?.get("IsDisabled") || false;
+        const IsDisabled = extUser?.IsDisabled || false;
+        console.log("User IsDisabled:", IsDisabled);
+        
         if (!IsDisabled) {
-          const userRole = extUser?.get("UserRole");
+          const userRole = extUser?.UserRole;
+          console.log("User role:", userRole);
+          console.log("Available settings:", userSettings);
+          
           const menu =
             userRole && userSettings?.find((menu) => menu.role === userRole);
+          console.log("Found menu:", menu);
+          
           if (menu) {
             const _currentRole = userRole;
             const redirectUrl =
               location?.state?.from || `/${menu.pageType}/${menu.pageId}`;
+            console.log("Redirect URL:", redirectUrl);
+            
             const _role = _currentRole.replace("contracts_", "");
             localStorage.setItem("_user_role", _role);
-            const checkLanguage = extUser?.get("Language");
+            const checkLanguage = extUser?.Language;
             if (checkLanguage) {
               checkLanguage && i18n.changeLanguage(checkLanguage);
             }
-            const extInfo = JSON.parse(JSON.stringify(extUser));
+            const extInfo = extUser;
             // Continue with storing user data and redirecting
             localStorage.setItem("Extand_Class", JSON.stringify([extUser]));
-            localStorage.setItem("userEmail", extInfo.Email);
-            localStorage.setItem("username", extInfo.Name);
+            localStorage.setItem("userEmail", extInfo.Email || extInfo.email);
+            localStorage.setItem("username", extInfo.Name || extInfo.name);
             if (extInfo?.TenantId) {
               const tenant = {
                 Id: extInfo?.TenantId?.objectId || "",
@@ -383,13 +414,18 @@ function Login() {
               localStorage.setItem("TenantId", tenant?.Id);
               dispatch(showTenant(tenant?.Name));
               localStorage.setItem("TenantName", tenant?.Name);
+            } else {
+              // Set empty TenantId if user doesn't have one
+              localStorage.setItem("TenantId", "");
             }
             localStorage.setItem("PageLanding", menu.pageId);
             localStorage.setItem("defaultmenuid", menu.menuId);
             localStorage.setItem("pageType", menu.pageType);
-              setState({ ...state, loading: false });
-              navigate(redirectUrl);
+            setState({ ...state, loading: false });
+            console.log("Navigating to:", redirectUrl);
+            navigate(redirectUrl);
           } else {
+            console.error("No menu found for role:", userRole);
             setState({ ...state, loading: false });
             setIsModal(true);
           }
@@ -404,6 +440,7 @@ function Login() {
     } catch (error) {
       console.error("Error during login flow", error);
       showToast("danger", error.message || t("something-went-wrong-mssg"));
+      setState({ ...state, loading: false });
     }
   };
 

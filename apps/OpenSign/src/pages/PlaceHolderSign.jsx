@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import axios from "axios";
-import Parse from "parse";
+import authService from "../services/authService";
+import documentService from "../services/documentService";
 import "../styles/signature.css";
 import { PDFDocument } from "pdf-lib";
 import RenderAllPdfPage from "../components/pdf/RenderAllPdfPage";
@@ -1014,7 +1015,7 @@ function PlaceHolderSign() {
       );
     }
     try {
-      const docCls = new Parse.Object("contracts_Document");
+      // Use documentService.saveDocument() instead
       docCls.id = documentId;
       if (signerPos?.length > 0) {
         docCls.set("Placeholders", signerPos);
@@ -1062,7 +1063,7 @@ function PlaceHolderSign() {
         pdfDetails?.[0]?.SendinOrder &&
         pdfDetails?.[0]?.SendinOrder === true
       ) {
-        const currentUserMail = Parse.User.current()?.getEmail();
+        const currentUserMail = authService.getCurrentUser()?.email;
         const isCurrentUser = signerMail?.[0]?.Email === currentUserMail;
         setIsCurrUser(isCurrentUser);
       } else {
@@ -1083,7 +1084,7 @@ function PlaceHolderSign() {
           ExpiryDate: { iso: updateExpiryDate, __type: "Date" }
         };
         await axios.put(
-          `${localStorage.getItem("baseUrl")}classes/contracts_Document/${documentId}`,
+          `${(localStorage.getItem("baseUrl") || "/api/app/")}classes/contracts_Document/${documentId}`,
           data,
           {
             headers: {
@@ -1188,7 +1189,7 @@ function PlaceHolderSign() {
 
     for (let i = 0; i < signerMail.length; i++) {
       try {
-        let url = `${localStorage.getItem("baseUrl")}functions/sendmailv3`;
+        let url = `${(localStorage.getItem("baseUrl") || "/api/app/")}functions/sendmailv3`;
         const headers = {
           "Content-Type": "application/json",
           "X-Parse-Application-Id": localStorage.getItem("parseAppId"),
@@ -1989,7 +1990,7 @@ function PlaceHolderSign() {
         ...Bcc,
         ...RedirectUrl
       };
-      const updateTemplateObj = new Parse.Object("contracts_Document");
+      // Use documentService.updateDocument() instead
       updateTemplateObj.id = pdfDetails?.[0]?.objectId;
       for (const key in data) {
         updateTemplateObj.set(key, data[key]);

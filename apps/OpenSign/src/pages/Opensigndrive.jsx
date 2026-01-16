@@ -8,7 +8,9 @@ import {
   getDrive
 } from "../constant/Utils";
 import { useNavigate } from "react-router";
-import Parse from "parse";
+import folderService from "../services/folderService";
+import userService from "../services/userService";
+import documentService from "../services/documentService";
 import ModalUi from "../primitives/ModalUi";
 import TourContentWithBtn from "../primitives/TourContentWithBtn";
 import Tour from "../primitives/Tour";
@@ -298,26 +300,20 @@ function Opensigndrive() {
       };
 
       try {
-        const exsitQuery = new Parse.Query(foldercls);
-        exsitQuery.equalTo("Name", newFolderName);
-        exsitQuery.equalTo("Type", "Folder");
-        exsitQuery.notEqualTo("IsArchive", true);
-        if (parentId) {
-          exsitQuery.equalTo("Folder", folderPtr);
-        }
-        const templExist = await exsitQuery.first();
+        const templExist = await folderService.folderExists(newFolderName);
         if (templExist) {
           setError("Folder already exist!");
           setIsFolderLoader(false);
         } else {
-          const template = new Parse.Object(foldercls);
-          template.set("Name", newFolderName);
-          template.set("Type", "Folder");
-
+          const folderData = {
+            Name: newFolderName,
+            Type: "Folder",
+            CreatedBy: CreatedBy
+          };
           if (parentId) {
-            template.set("Folder", folderPtr);
+            folderData.Folder = parentId;
           }
-          template.set("CreatedBy", CreatedBy);
+          await folderService.createFolder(folderData);
           const res = await template.save();
           if (res) {
             const result = JSON.parse(JSON.stringify(res));
@@ -476,7 +472,7 @@ function Opensigndrive() {
     setIsTour(false);
     setShowTourFirstTime(false);
     if (isDontShow) {
-      const serverUrl = localStorage.getItem("baseUrl");
+      const serverUrl = localStorage.getItem("baseUrl") || "/api/app/";
       const appId = localStorage.getItem("parseAppId");
       const json = JSON.parse(localStorage.getItem("Extand_Class"));
       const extUserId = json && json.length > 0 && json[0].objectId;
@@ -494,22 +490,19 @@ function Opensigndrive() {
       } else {
         updatedTourStatus = [{ driveTour: true }];
       }
-      await axios.put(
-        serverUrl + "classes/contracts_Users/" + extUserId,
-        {
-          TourStatus: updatedTourStatus
-        },
+      await userService.updateTourStatus(extUserId, updatedTourStatus);
+      /* Original code removed:
         {
           headers: {
             "X-Parse-Application-Id": appId
           }
         }
-      );
+      );*/
     }
   };
   //function to use check tour status of open sign drive
   async function checkTourStatus() {
-    const cloudRes = await Parse.Cloud.run("getUserDetails");
+    const cloudRes = await userService.getCurrentUser();
     if (cloudRes) {
       const extUser = JSON.parse(JSON.stringify(cloudRes));
       localStorage.setItem("Extand_Class", JSON.stringify([extUser]));
@@ -532,7 +525,7 @@ function Opensigndrive() {
     // Start new debounce timer
     debounceTimer.current = setTimeout(async () => {
       try {
-        const res = await Parse.Cloud.run("filterdocs", { searchTerm: name });
+        const res = await documentService.searchDocuments(name);
         setPdfData(JSON.parse(JSON.stringify(res)));
       } catch (err) {
         console.error("Search error:", err);
@@ -688,60 +681,60 @@ function Opensigndrive() {
               </div>
               {/* Mobile search toggle */}
               <button
-                className="md:hidden p-2 flex justify-center items-center focus:outline-none rounded-md hover:bg-base-300 text-[18px]"
-                aria-label="Search"
-                onClick={() => setMobileSearchOpen((open) => !open)}
-              >
-                <i
-                  style={{ color: `${getThemeIconColor()}` }}
-                  className="fa-solid fa-magnifying-glass"
-                ></i>
-              </button>
+      className="md:hidden p-2 flex justify-center items-center focus:outline-none rounded-md hover:bg-base-300 text-[18px]"
+      aria-label="Search"
+      onClick={() => setMobileSearchOpen((open) => !open)}
+    >
+      <i
+        style={{ color: `${getThemeIconColor()}` }}
+        className="fa-solid fa-magnifying-glass"
+      ></i>
+    </button>
               <div
                 id="folder-menu"
                 className={`${isOptions ? "dropdown show dropDownStyle" : "dropdown"} hidden md:block cursor-pointer hover:bg-base-300 p-2 rounded-md`}
                 onClick={handleFolderOptions}
+                data-tut="reactourSecond"
               >
-                <div data-tut="reactourSecond">
-                  <i
-                    className="fa-light fa-plus-square text-[24px]"
-                    aria-hidden="true"
-                    style={{ color: `${getThemeIconColor()}` }}
-                  ></i>
-                </div>
-                <div
-                  className={`${isOptions ? "block" : "hidden"} ${dropdowncss}`}
-                  aria-labelledby="dropdownMenuButton"
-                  aria-expanded={isOptions ? "true" : "false"}
-                >
-                  <div className="flex flex-col">
-                    <span
-                      className="dropdown-item text-[10px] md:text-[13px]"
-                      onClick={() => setIsFolder(true)}
-                    >
-                      <i
-                        className="fa-light fa-plus mr-[5px]"
-                        aria-hidden="true"
-                      ></i>
-                      {t("create-folder")}
-                    </span>
-                    <span
-                      className="dropdown-item text-[10px] md:text-[13px]"
-                      onClick={() => navigate("/form/sHAnZphf69")}
-                    >
-                      <i className="fa-light fa-pen-nib mr-[5px]"></i>
-                      {t("Sign Yourself")}
-                    </span>
-                    <span
-                      className="dropdown-item text-[10px] md:text-[13px]"
-                      onClick={() => navigate("/form/8mZzFxbG1z")}
-                    >
-                      <i className="fa-light fa-file-signature mr-[5px]"></i>
-                      {t("Request Signatures")}
-                    </span>
-                  </div>
-                </div>
+                <i
+                  className="fa-light fa-plus-square text-[24px]"
+                  aria-hidden="true"
+                  style={{ color: `${getThemeIconColor()}` }}
+                ></i>
               </div>
+              <div
+        className={`${isOptions ? "block" : "hidden"} ${dropdowncss}`}
+        aria-labelledby="dropdownMenuButton"
+        aria-expanded={isOptions ? "true" : "false"}
+      >
+        <div className="flex flex-col">
+          <span
+            className="dropdown-item text-[10px] md:text-[13px]"
+            onClick={() => setIsFolder(true)}
+          >
+            <i
+              className="fa-light fa-plus mr-[5px]"
+              aria-hidden="true"
+            ></i>
+            {t("create-folder")}
+          </span>
+          <span
+            className="dropdown-item text-[10px] md:text-[13px]"
+            onClick={() => navigate("/form/sHAnZphf69")}
+          >
+            <i className="fa-light fa-pen-nib mr-[5px]"></i>
+            {t("Sign Yourself")}
+          </span>
+          <span
+            className="dropdown-item text-[10px] md:text-[13px]"
+            onClick={() => navigate("/form/8mZzFxbG1z")}
+          >
+            <i className="fa-light fa-file-signature mr-[5px]"></i>
+            {t("Request Signatures")}
+          </span>
+        </div>
+      </div>
+            
               <div
                 id="menu-container"
                 className={isShowSort ? "dropdown show" : "dropdown"}

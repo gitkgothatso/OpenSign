@@ -1,5 +1,6 @@
 import React, { useState } from "react";
-import Parse from "parse";
+import { folderService } from "../../../services/folderService";
+import { authService } from "../../../services/authService";
 import Alert from "../../../primitives/Alert";
 import Loader from "../../../primitives/Loader";
 import { useTranslation } from "react-i18next";
@@ -22,31 +23,32 @@ const CreateFolder = ({ parentFolderId, onSuccess, folderCls, onBack }) => {
     event.preventDefault();
     handleLoader(true);
     if (name) {
-      const currentUser = Parse.User.current();
-      const exsitQuery = new Parse.Query(folderCls);
-      exsitQuery.equalTo("Name", name);
-      exsitQuery.equalTo("Type", "Folder");
-      exsitQuery.notEqualTo("IsArchive", true);
-      if (parentFolderId) {
-        exsitQuery.equalTo("Folder", folderPtr);
-      }
-      const templExist = await exsitQuery.first();
-      if (templExist) {
-        showToast("danger", t("folder-already-exist"));
-      } else {
-        const template = new Parse.Object(folderCls);
-        template.set("Name", name);
-        template.set("Type", "Folder");
-        if (parentFolderId) {
-          template.set("Folder", folderPtr);
-        }
-        template.set("CreatedBy", Parse.User.createWithoutData(currentUser.id));
-        const res = await template.save();
-        if (res) {
+      try {
+        // Check if folder already exists
+        const exists = await folderService.folderExists(name);
+        if (exists) {
+          showToast("danger", t("folder-already-exist"));
           handleLoader(false);
-          showToast("success", t("folder-created-successfully"));
-          onSuccess && onSuccess(res?.toJSON());
+        } else {
+          // Create folder (CreatedBy is automatically set by backend)
+          const folderData = {
+            name: name,
+            type: "Folder"
+          };
+          if (parentFolderId) {
+            folderData.folderId = parentFolderId;
+          }
+          const res = await folderService.createFolder(folderData);
+          if (res) {
+            handleLoader(false);
+            showToast("success", t("folder-created-successfully"));
+            onSuccess && onSuccess(res);
+          }
         }
+      } catch (error) {
+        console.error("Error creating folder:", error);
+        showToast("danger", t("error-creating-folder"));
+        handleLoader(false);
       }
     } else {
       handleLoader(false);

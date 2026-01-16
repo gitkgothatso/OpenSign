@@ -1,7 +1,9 @@
 import { useState, useRef, useEffect } from "react";
 import { PDFDocument } from "pdf-lib";
 import "../styles/signature.css";
-import Parse from "parse";
+import authService from "../services/authService";
+import documentService from "../services/documentService";
+import userService from "../services/userService";
 import Confetti from "react-confetti";
 import axios from "axios";
 import RenderAllPdfPage from "../components/pdf/RenderAllPdfPage";
@@ -72,6 +74,7 @@ import CellsSettingModal from "../components/pdf/CellsSettingModal";
 import {
   applyNumberFormulasToPages,
 } from "../utils";
+import apiClient from "../config/api";
 //For signYourself inProgress section signer can add sign and complete doc sign.
 function SignYourSelf() {
   const { t } = useTranslation();
@@ -486,7 +489,7 @@ function SignYourSelf() {
   const handleResend = async (e) => {
     e.preventDefault();
     setOtpLoader(true);
-    await handleSendOTP(Parse.User.current().getEmail());
+    await handleSendOTP(authService.getCurrentUser()?.email);
     setOtpLoader(false);
     alert(t("otp-sent-alert"));
   };
@@ -495,9 +498,9 @@ function SignYourSelf() {
     e.preventDefault();
     setOtpLoader(true);
     try {
-      const resEmail = await Parse.Cloud.run("verifyemail", {
+      const resEmail = await userService.verifyEmail({
         otp: otp,
-        email: Parse.User.current().getEmail()
+        email: authService.getCurrentUser()?.email
       });
       if (resEmail?.message === "Email is verified.") {
         setIsEmailVerified(true);
@@ -518,7 +521,7 @@ function SignYourSelf() {
   //`handleVerifyBtn` function is used to send otp on user mail
   const handleVerifyBtn = async () => {
     setIsVerifyModal(true);
-    await handleSendOTP(Parse.User.current().getEmail());
+    await handleSendOTP(authService.getCurrentUser()?.email);
   };
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -565,7 +568,7 @@ function SignYourSelf() {
       }));
     }
     try {
-      const docCls = new Parse.Object("contracts_Document");
+      // Use documentService instead of Parse.Object
       docCls.id = documentId;
       if (xyPosition?.length > 0) {
         docCls.set("Placeholders", updatedXYPosition);
@@ -588,7 +591,7 @@ function SignYourSelf() {
   //function for send placeholder's co-ordinate(x,y) position embed signature url or stamp url
   async function embedWidgetsData() {
     //check current user email is verified or not
-    const currentUser = JSON.parse(JSON.stringify(Parse.User.current()));
+    const currentUser = authService.getCurrentUser();
     let isEmailVerified;
     isEmailVerified = currentUser?.emailVerified;
     const isEnableOTP = pdfDetails?.[0]?.IsEnableOTP || false;
@@ -597,10 +600,9 @@ function SignYourSelf() {
         setIsEmailVerified(isEmailVerified);
       } else {
         try {
-          const userQuery = new Parse.Query(Parse.User);
-          const user = await userQuery.get(currentUser.objectId, {
-            sessionToken: localStorage.getItem("accesstoken")
-          });
+          // Use userService instead of Parse.Query
+
+          const user = await userService.getCurrentUser();
           if (user) {
             isEmailVerified = user?.get("emailVerified");
             setIsEmailVerified(isEmailVerified);
@@ -772,7 +774,7 @@ function SignYourSelf() {
       isCustomCompletionMail: isCustomCompletionMail,
       signature: suffixbase64,
     };
-    const resSignPdf = await Parse.Cloud.run("signPdf", params);
+    const resSignPdf = await documentService.signPdf(params);
     if (resSignPdf) {
       const signedpdf = JSON.parse(JSON.stringify(resSignPdf));
       setPdfUrl(signedpdf);
@@ -951,17 +953,7 @@ function SignYourSelf() {
         updatedTourStatus = [{ signyourself: true }];
       }
       try {
-        await axios.put(
-          `${localStorage.getItem("baseUrl")}classes/contracts${contractName}/${signerUserId}`,
-          { TourStatus: updatedTourStatus },
-          {
-            headers: {
-              "Content-Type": "application/json",
-              "X-Parse-Application-Id": localStorage.getItem("parseAppId"),
-              sessionToken: localStorage.getItem("accesstoken")
-            }
-          }
-        );
+          await userService.updateTourStatus(signerUserId, updatedTourStatus);
       } catch (err) {
         console.log("axois err ", err);
         alert(t("something-went-wrong-mssg"));

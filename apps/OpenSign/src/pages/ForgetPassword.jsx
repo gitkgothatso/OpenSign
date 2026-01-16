@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 import login_img from "../assets/images/login_img.svg";
-import Parse from "parse";
+import { authService } from "../services/authService";
 import Alert from "../primitives/Alert";
 import { appInfo } from "../constant/appinfo";
 import { useDispatch } from "react-redux";
@@ -47,7 +47,9 @@ function ForgotPassword() {
       if (state.email) {
         const username = state.email;
         try {
-            await Parse.User.requestPasswordReset(username);
+          // TODO: Implement password reset endpoint in backend
+          // For now, calling auth service (may need new endpoint)
+          await authService.resetPassword?.(username);
           setToast({ type: "success", message: t("reset-password-alert-1") });
         } catch (err) {
           console.log("err ", err.code);
@@ -73,7 +75,7 @@ function ForgotPassword() {
   }, []);
   const saveLogo = async () => {
     try {
-      await Parse.User.logOut();
+      authService.logout();
     } catch (err) {
       console.log("err while logging out ", err);
     }

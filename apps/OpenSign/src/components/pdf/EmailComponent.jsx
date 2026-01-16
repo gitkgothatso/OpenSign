@@ -8,7 +8,7 @@ import {
 import Loader from "../../primitives/Loader";
 import ModalUi from "../../primitives/ModalUi";
 import { useTranslation } from "react-i18next";
-import Parse from "parse";
+import { documentService } from "../../services/documentService";
 
 function EmailComponent({
   isEmail,
@@ -29,20 +29,29 @@ function EmailComponent({
   //function for send email
   const sendEmail = async () => {
     setIsLoading(true);
-    const params = { docId: pdfDetails?.[0]?.objectId, recipients: emailList };
-    const sendmail = await Parse.Cloud.run("forwarddoc", params);
-    if (sendmail?.status === "success") {
-      setSuccessEmail(true);
-      setIsEmail(false);
-      setTimeout(() => {
-        setSuccessEmail(false);
+    try {
+      const docId = pdfDetails?.[0]?.objectId || pdfDetails?.[0]?.id;
+      const emailData = { recipients: emailList };
+      const sendmail = await documentService.forwardDocument(docId, emailData);
+      if (sendmail?.status === "success") {
+        setSuccessEmail(true);
+        setIsEmail(false);
+        setTimeout(() => {
+          setSuccessEmail(false);
+          setEmailValue("");
+          setEmailList([]);
+        }, 1500);
+      } else {
+        setIsEmail(false);
+        setIsAlert({
+          isShow: true,
+          alertMessage: t("something-went-wrong-mssg")
+        });
         setEmailValue("");
         setEmailList([]);
-      }, 1500);
-      setIsLoading(false);
-    }
-    else {
-      setIsLoading(false);
+      }
+    } catch (error) {
+      console.error("Error sending email:", error);
       setIsEmail(false);
       setIsAlert({
         isShow: true,
@@ -50,6 +59,8 @@ function EmailComponent({
       });
       setEmailValue("");
       setEmailList([]);
+    } finally {
+      setIsLoading(false);
     }
   };
 

@@ -22,6 +22,7 @@ import DocSuccessPage from "./pages/DocSuccessPage";
 import DragProvider from "./components/DragProivder";
 import Title from "./components/Title";
 const DebugPdf = lazyWithRetry(() => import("./pages/DebugPdf"));
+import { UserProvider } from "./context/UserContext";
 const ForgetPassword = lazyWithRetry(() => import("./pages/ForgetPassword"));
 const GuestLogin = lazyWithRetry(() => import("./pages/GuestLogin"));
 const ChangePassword = lazyWithRetry(() => import("./pages/ChangePassword"));
@@ -60,6 +61,7 @@ function App() {
       {isloading ? (
         <AppLoader />
       ) : (
+        <UserProvider>
         <BrowserRouter>
           <Title />
           <Routes>
@@ -140,6 +142,7 @@ function App() {
             <Route path="*" element={<PageNotFound />} />
           </Routes>
         </BrowserRouter>
+        </UserProvider>
       )}
     </div>
   );

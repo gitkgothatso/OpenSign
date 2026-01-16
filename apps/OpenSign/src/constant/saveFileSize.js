@@ -1,4 +1,5 @@
 import axios from "axios";
+import { storageService } from "../services/storageService";
 import { serverUrl_fn } from "./appinfo";
 const parseAppId = process.env.REACT_APP_APPID
   ? process.env.REACT_APP_APPID
@@ -28,16 +29,7 @@ export const SaveFileSize = async (size, imageUrl, tenantId, userId) => {
   };
   const _tenantPtr = JSON.stringify(tenantPtr);
   try {
-    const res = await axios.get(
-      `${serverUrl}/classes/partners_TenantCredits?where={"PartnersTenant":${_tenantPtr}}`,
-      {
-        headers: {
-          "Content-Type": "application/json",
-          "X-Parse-Application-Id": parseAppId
-        }
-      }
-    );
-    const response = res.data.results;
+    const response = await storageService.getTenantCredits(tenantPtr.__type === 'Pointer' ? tenantPtr.objectId : tenantPtr);
     let data;
     if (response && response.length > 0) {
       data = {
@@ -45,16 +37,16 @@ export const SaveFileSize = async (size, imageUrl, tenantId, userId) => {
           ? response[0].usedStorage + size
           : size
       };
-      await axios.put(
-        `${serverUrl}/classes/partners_TenantCredits/${response[0].objectId}`,
-        data,
-        { headers: commonheader }
+      await storageService.updateTenantCredits(
+        response.objectId || response[0].objectId,
+        data.usedStorage
       );
     } else {
       data = { usedStorage: size, PartnersTenant: tenantPtr };
-      await axios.post(`${serverUrl}/classes/partners_TenantCredits`, data, {
-        headers: commonheader
-      });
+      await storageService.createTenantCredits(
+        tenantPtr.__type === 'Pointer' ? tenantPtr.objectId : tenantPtr,
+        data.usedStorage
+      );
     }
   } catch (err) {
     console.log("err in save usage", err);
@@ -71,9 +63,12 @@ const saveDataFile = async (size, imageUrl, tenantPtr, UserId) => {
     ...(UserId ? { UserId: UserId } : {})
   };
   try {
-    await axios.post(`${serverUrl}/classes/partners_DataFiles`, data, {
-      headers: commonheader
-    });
+    await storageService.saveDataFile(
+      data.FileUrl,
+      data.FileSize,
+      data.TenantPtr.__type === 'Pointer' ? data.TenantPtr.objectId : data.TenantPtr,
+      data.UserId
+    );
   } catch (err) {
     console.log("err in save usage ", err);
   }

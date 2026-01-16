@@ -1,11 +1,11 @@
 import { SaveFileSize } from "../constant/saveFileSize";
 import { getSecureUrl } from "../constant/Utils";
-import Parse from "parse";
+// File uploads now handled via REST API
 import i18n from "../i18n";
 
 export const uploadFile = async (file, userId) => {
   try {
-    const parseFile = new Parse.File(file.name, file);
+    // Use signatureService.uploadSignatureFile() or documentService upload methods
     const response = await parseFile.save();
     if (response?.url()) {
       const fileRes = await getSecureUrl(response.url());

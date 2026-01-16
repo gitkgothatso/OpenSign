@@ -1,3 +1,4 @@
+import { contactService } from "../../services/contactService";
 import React, { useState, useEffect, useRef } from "react";
 import pad from "../../assets/images/pad.svg";
 import axios from "axios";
@@ -167,10 +168,9 @@ const Contactbook = (props) => {
     setIsDeleteModal({});
     setActLoader({ [`${item.objectId}`]: true });
     try {
-      const serverUrl = serverUrl_fn();
-      const cls = "contracts_Contactbook";
-      const url = serverUrl + `/classes/${cls}/`;
-      const body = { IsDeleted: true };
+      await contactService.deleteContact(item.objectId);
+      /* Original Parse API code removed */
+      /*
       const res = await axios.put(url + item.objectId, body, {
         headers: {
           "Content-Type": "application/json",
@@ -185,7 +185,7 @@ const Contactbook = (props) => {
           (x) => x.objectId !== item.objectId
         );
         props.setList(upldatedList);
-      }
+      } */
     } catch (err) {
       console.log("err", err);
       showAlert("danger", t("something-went-wrong-mssg"));

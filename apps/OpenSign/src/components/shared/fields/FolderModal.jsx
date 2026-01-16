@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import Parse from "parse";
+import { folderService } from "../../../services/folderService";
 import CreateFolder from "./CreateFolder";
 import ModalUi from "../../../primitives/ModalUi";
 import { useTranslation } from "react-i18next";
@@ -23,29 +23,29 @@ const FolderModal = (props) => {
   }, [props.isOpenModal]);
 
   // `fetchFolder` is used to fetch of folder list created by user on basis of folderPtr or without folderPtr
-  const fetchFolder = async (folderPtr) => {
+  const fetchFolder = async (folderId) => {
     setIsLoader(true);
     try {
-      const FolderQuery = new Parse.Query(props.folderCls);
-      if (folderPtr) {
-        FolderQuery.equalTo("Folder", folderPtr);
-        FolderQuery.descending("Type");
-        FolderQuery.notEqualTo("IsArchive", true);
-        FolderQuery.equalTo("CreatedBy", Parse.User.current());
-      } else {
-        FolderQuery.doesNotExist("Folder");
-        FolderQuery.descending("Type");
-        FolderQuery.notEqualTo("IsArchive", true);
-        FolderQuery.equalTo("CreatedBy", Parse.User.current());
-      }
-
-      const res = await FolderQuery.find();
+      // Fetch all user folders
+      const res = await folderService.getUserFolders();
       if (res) {
-        const result = JSON.parse(JSON.stringify(res));
-        if (result) {
-          setFolderList(result);
-          setIsLoader(false);
+        // Filter by parent folder if provided
+        let filtered = res;
+        if (folderId) {
+          filtered = res.filter(f => f.folderId === folderId || f.Folder?.objectId === folderId);
+        } else {
+          // Root level folders (no parent)
+          filtered = res.filter(f => !f.folderId && !f.Folder);
         }
+        // Filter out archived folders
+        filtered = filtered.filter(f => !f.IsArchive);
+        // Sort by Type (Folder first)
+        filtered.sort((a, b) => {
+          if (a.Type === "Folder" && b.Type !== "Folder") return -1;
+          if (a.Type !== "Folder" && b.Type === "Folder") return 1;
+          return 0;
+        });
+        setFolderList(filtered);
         setIsLoader(false);
       }
     } catch (error) {
@@ -61,22 +61,11 @@ const FolderModal = (props) => {
       const tab = tabList.some((x) => x.objectId === item.objectId);
       if (!tab) {
         setTabList((tabs) => [...tabs, item]);
-        const folderPtr = {
-          __type: "Pointer",
-          className: props.folderCls,
-          objectId: item.objectId
-        };
-        fetchFolder(folderPtr);
+        fetchFolder(item.objectId);
       }
     } else {
       setTabList((tabs) => [...tabs, item]);
-      const folderPtr = {
-        __type: "Pointer",
-        className: props.folderCls,
-        objectId: item.objectId
-      };
-
-      fetchFolder(folderPtr);
+      fetchFolder(item.objectId);
     }
   };
 
@@ -112,13 +101,8 @@ const FolderModal = (props) => {
       setFolderList([]);
       const list = tabList.filter((folder, j) => j <= i && folder);
       const index = list.length - 1;
-      const folderPtr = {
-        __type: "Pointer",
-        className: props.folderCls,
-        objectId: list[index].objectId
-      };
       setTabList(list);
-      fetchFolder(folderPtr);
+      fetchFolder(list[index].objectId);
     } else {
       setClickFolder({});
       setFolderList([]);
@@ -133,11 +117,7 @@ const FolderModal = (props) => {
   const handleAddFolder = (newFolder) => {
     props.setPdfData((prev) => [...prev, newFolder]);
     if (clickFolder && clickFolder.ObjectId) {
-      fetchFolder({
-        __type: "Pointer",
-        className: props.folderCls,
-        objectId: newFolder.objectId // clickFolder.ObjectId
-      });
+      fetchFolder(newFolder.objectId);
     } else {
       fetchFolder();
     }

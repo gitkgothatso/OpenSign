@@ -1,5 +1,5 @@
 import { useState } from "react";
-import Parse from "parse";
+import { authService } from "../services/authService";
 import { Navigate } from "react-router";
 import { useTranslation } from "react-i18next";
 
@@ -37,40 +37,20 @@ function ChangePassword() {
     try {
       if (newpassword === confirmpassword) {
         if (lengthValid && caseDigitValid && specialCharValid) {
-          Parse.User.logIn(localStorage.getItem("userEmail"), currentpassword)
-            .then(async (user) => {
-              if (user) {
-                const User = new Parse.User();
-                const query = new Parse.Query(User);
-                await query.get(user.id).then((user) => {
-                  // Updates the data we want
-                  user.set("password", newpassword);
-                  user
-                    .save()
-                    .then(async () => {
-                      let _user = user.toJSON();
-                      if (_user) {
-                        await Parse.User.become(_user.sessionToken);
-                        localStorage.setItem("accesstoken", _user.sessionToken);
-                      }
-                      setCurrentPassword("");
-                      setnewpassword("");
-                      setconfirmpassword("");
-                      alert(t("password-update-alert-1"));
-                    })
-                    .catch((error) => {
-                      console.log("err", error);
-                      alert(t("something-went-wrong-mssg"));
-                    });
-                });
-              } else {
-                alert(t("password-update-alert-2"));
-              }
-            })
-            .catch((error) => {
-              alert(t("password-update-alert-3"));
-              console.error("Error while logging in user", error);
-            });
+          try {
+            await authService.changePassword(currentpassword, newpassword);
+            setCurrentPassword("");
+            setnewpassword("");
+            setconfirmpassword("");
+            alert(t("password-update-alert-1"));
+          } catch (error) {
+            console.error("Password change error:", error);
+            if (error.response?.status === 401) {
+              alert(t("password-update-alert-2")); // Current password incorrect
+            } else {
+              alert(t("something-went-wrong-mssg"));
+            }
+          }
         }
       } else {
         alert(t("password-update-alert-4"));

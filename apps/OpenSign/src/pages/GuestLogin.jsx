@@ -10,7 +10,8 @@ import {
 } from "../constant/Utils";
 import logo from "../assets/images/logo.png";
 import { appInfo } from "../constant/appinfo";
-import Parse from "parse";
+import { getDocumentDetails, linkContactToDocument, sendOTPEmail } from "../services/documentService";
+import authService from "../services/authService";
 import { useTranslation } from "react-i18next";
 import SelectLanguage from "../components/pdf/SelectLanguage";
 import LoaderWithMsg from "../primitives/LoaderWithMsg";
@@ -46,9 +47,7 @@ function GuestLogin() {
 
   const navigateToDoc = async (docId, contactId) => {
     try {
-      const docDetails = await Parse.Cloud.run("getDocument", {
-        docId: docId
-      });
+      const docDetails = await getDocumentDetails(docId);
       if (!docDetails.error) {
         if (sendmail === "false") {
           navigate(
@@ -112,10 +111,7 @@ function GuestLogin() {
           docId: checkSplit[0]
         };
         try {
-          const linkContactRes = await Parse.Cloud.run(
-            "linkcontacttodoc",
-            params
-          );
+          const linkContactRes = await linkContactToDocument(params);
           setContactId(linkContactRes?.contactId);
           await navigateToDoc(checkSplit[0], linkContactRes?.contactId);
         } catch (err) {
@@ -138,7 +134,7 @@ function GuestLogin() {
         email: email?.toLowerCase()?.replace(/\s/g, "")?.toString(),
         docId: documentId,
       };
-      const Otp = await Parse.Cloud.run("SendOTPMailV1", params);
+      const Otp = await sendOTPEmail(params);
       if (Otp) {
         setLoading(false);
         setEnterOtp(true);
@@ -182,7 +178,7 @@ function GuestLogin() {
           setLoading(false);
         } else {
           let _user = user.data.result;
-          await Parse.User.become(_user.sessionToken);
+          // JWT auth - no need for Parse.User.become()
           const parseId = localStorage.getItem("parseAppId");
           if (_user) {
             localStorage.setItem("accesstoken", _user?.sessionToken);
@@ -226,10 +222,7 @@ function GuestLogin() {
       const params = { ...contact, docId: documentId };
       try {
         setLoading(true);
-        const linkContactRes = await Parse.Cloud.run(
-          "linkcontacttodoc",
-          params
-        );
+        const linkContactRes = await linkContactToDocument(params);
         setContactId(linkContactRes.contactId);
         const IsEnableOTP = await navigateToDoc(
           documentId,

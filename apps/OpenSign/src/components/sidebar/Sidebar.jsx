@@ -26,7 +26,7 @@ const Sidebar = () => {
     : "";
 
   useEffect(() => {
-    if (localStorage.getItem("accesstoken")) {
+    if (localStorage.getItem("jwtToken")) {
       menuItem();
     }
   }, []);

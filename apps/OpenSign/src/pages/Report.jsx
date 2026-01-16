@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from "react";
-import Parse from "parse";
+import { authService } from "../services/authService";
 import axios from "axios";
 import { reportService } from "../services/reportService";
 import reportJson, { extraCols } from "../json/ReportJson";
@@ -144,7 +144,7 @@ const Report = () => {
       setDefaultColumns(json.heading);
       setReportName(json.reportName);
       setReportHelp(json?.helpMsg);
-      const currentUser = Parse.User.current().id;
+      const currentUser = authService.getCurrentUser()?.id;
 
       const headers = {
         "Content-Type": "application/json",

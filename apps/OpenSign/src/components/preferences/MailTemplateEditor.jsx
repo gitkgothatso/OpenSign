@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
-import Parse from "parse";
+import userService from "../../services/userService";
 import ReactQuill from "react-quill-new";
 import "../../styles/quill.css";
 import EditorToolbar, { module1, module2, formats } from "../pdf/EditorToolbar";
@@ -84,7 +84,7 @@ const MailTemplateEditor = ({
     try {
       const replacedHtmlBody = completionBody.replace(/"/g, "'");
       const htmlBody = `<html><head><meta http-equiv='Content-Type' content='text/html; charset=UTF-8' /></head><body>${replacedHtmlBody}</body></html>`;
-      const updateTenant = await Parse.Cloud.run(cloudfunction, {
+      const updateTenant = await userService.updateTenantSettings({
         tenantId: tenantId,
         details: {
           CompletionBody: htmlBody,
@@ -110,7 +110,7 @@ const MailTemplateEditor = ({
     try {
       const replacedHtmlBody = requestBody.replace(/"/g, "'");
       const htmlBody = `<html><head><meta http-equiv='Content-Type' content='text/html; charset=UTF-8' /></head><body>${replacedHtmlBody}</body></html>`;
-      const updateTenant = await Parse.Cloud.run(cloudfunction, {
+      const updateTenant = await userService.updateTenantSettings({
         tenantId: tenantId,
         details: { RequestBody: htmlBody, RequestSubject: requestSubject }
       });
@@ -148,7 +148,7 @@ const MailTemplateEditor = ({
       setRequestSubject(defaultRequestSubject);
       setIsMailLoader((p) => ({ ...p, request: true }));
       try {
-        await Parse.Cloud.run(cloudfunction, {
+        await userService.updateTenantSettings({
           tenantId: tenantId,
           details: { RequestBody: "", RequestSubject: "" }
         });
@@ -169,7 +169,7 @@ const MailTemplateEditor = ({
       setCompletionBody(defaultCompletionBody);
       setIsMailLoader((p) => ({ ...p, completion: true }));
       try {
-        await Parse.Cloud.run(cloudfunction, {
+        await userService.updateTenantSettings({
           tenantId: tenantId,
           details: { CompletionBody: "", CompletionSubject: "" }
         });
