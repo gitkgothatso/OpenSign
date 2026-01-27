@@ -2596,26 +2596,51 @@ export const getFileName = (fileUrl) => {
 export const getAppLogo = async () => {
 
   const domain = window.location.host;
+  let logo = appInfo.applogo;
+  let userStatus = "exist"; // Default to "exist" for safety
+
+  // Try to get tenant logo (optional - tenant may not exist yet)
   try {
-    const response = await apiClient.get(`/tenants/domain/${encodeURIComponent(domain)}`);
-    const tenant = response?.data;
-    if (tenant) {
-      localStorage.setItem("appname", "OpenSign™");
-      localStorage.setItem("favicon", appInfo.fev_Icon);
-      return {
-        logo: tenant.logo,
-        user: tenant.user
-      };
+    const tenantResponse = await apiClient.get(`/tenants/domain/${encodeURIComponent(domain)}`);
+    const tenant = tenantResponse?.data;
+    if (tenant?.logo) {
+      logo = tenant.logo;
     }
   } catch (err) {
-    console.log("err in getlogo ", err);
-    localStorage.setItem("favicon", appInfo.fev_Icon);
-    if (err?.message?.includes("valid JSON")) {
-      return { logo: appInfo.applogo, user: "exist", error: "invalid_json" };
-    } else {
-      return { logo: appInfo.applogo, user: "exist" };
+    // Tenant not found is OK - we'll check admin status separately
+    console.log("Tenant not found for domain:", domain);
+  }
+
+  // Check if admin user exists (this determines if we show signup screen)
+  try {
+    // Create a separate axios instance without auth interceptor for this public endpoint
+    const axios = (await import('axios')).default;
+    const publicClient = axios.create({
+      baseURL: import.meta.env.VITE_API_URL || 'http://localhost:8080/api/v1',
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    });
+    const checkAdminResponse = await publicClient.get(`/auth/check-admin`);
+    userStatus = checkAdminResponse?.data?.user || "exist";
+  } catch (err) {
+    console.log("err in check admin exist ", err);
+    // If check fails, default to "exist" to prevent showing signup when admin exists
+    userStatus = "exist";
+    
+    // Only return "not_exist" if we get a clear 404/not found response
+    if (err?.response?.status === 404) {
+      userStatus = "not_exist";
     }
   }
+
+  localStorage.setItem("appname", "OpenSign™");
+  localStorage.setItem("favicon", appInfo.fev_Icon);
+
+  return {
+    logo: logo,
+    user: userStatus
+  };
 };
 export const getTenantDetails = async (objectId, contactId) => {
   try {
