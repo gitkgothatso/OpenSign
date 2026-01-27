@@ -1,6 +1,4 @@
 import { useState, useEffect } from "react";
-import axios from "axios";
-import getReplacedHashQuery from "../../constant/getReplacedHashQuery";
 import { useNavigate } from "react-router";
 import Tooltip from "../../primitives/Tooltip";
 import { useTranslation } from "react-i18next";
@@ -9,70 +7,117 @@ import { authService } from "../../services/authService";
 import { userService } from "../../services/userService";
 import documentService from "../../services/documentService";
 import { useUser } from "../../context/UserContext";
+import apiClient from "../../config/api";
 
 const DashboardCard = (props) => {
   const navigate = useNavigate();
   const { t } = useTranslation();
   const { user } = useUser();
-  const [parseBaseUrl] = useState(localStorage.getItem("baseUrl"));
-  const [parseAppId] = useState(localStorage.getItem("parseAppId"));
   const [response, setresponse] = useState("");
   const [loading, setLoading] = useState(false);
+
+  /**
+   * Convert Parse query string to REST API filters
+   * Handles hash replacements and converts to filter object
+   */
+  const parseQueryToFilters = (queryStr, userData) => {
+    const filters = {};
+    const currentUser = authService.getCurrentUser();
+    
+    // Replace hash placeholders with actual values
+    let processedQuery = queryStr;
+    processedQuery = processedQuery.split("#$").join("$");
+    processedQuery = processedQuery.split("#*").join("$");
+    processedQuery = processedQuery.split("_DOT_").join(".");
+    
+    // Extract filter conditions from query string
+    // Example: "CreatedBy.objectId=#objectId#" -> { createdBy: currentUser.id }
+    const hashRegex = /#([^#]+)#/g;
+    const matches = processedQuery.match(hashRegex);
+    
+    if (matches) {
+      matches.forEach(match => {
+        const key = match.replace(/#/g, '');
+        if (key === 'objectId' || key === 'id') {
+          processedQuery = processedQuery.replace(match, currentUser?.id || userData?.objectId || '');
+        } else if (userData && userData[key]) {
+          processedQuery = processedQuery.replace(match, userData[key]);
+        } else if (key.includes('.')) {
+          const [parent, child] = key.split('.');
+          if (userData && userData[parent] && userData[parent][child]) {
+            processedQuery = processedQuery.replace(match, userData[parent][child]);
+          }
+        }
+      });
+    }
+    
+    // Parse query string into filter object
+    // This is a simplified parser - may need enhancement based on actual query formats
+    const params = new URLSearchParams(processedQuery);
+    params.forEach((value, key) => {
+      // Convert Parse field names to REST API filter names
+      if (key === 'CreatedBy.objectId' || key === '_created_by') {
+        filters.createdBy = value;
+      } else if (key === 'IsCompleted') {
+        filters.isCompleted = value === 'true';
+      } else if (key === 'IsDeclined') {
+        filters.isDeclined = value === 'true';
+      } else if (key === 'IsArchive') {
+        filters.isArchived = value === 'true';
+      } else {
+        filters[key] = value;
+      }
+    });
+    
+    return filters;
+  };
 
   const renderData = async () => {
     if (props.Data.queryType === "function") {
       setLoading(true);
       try {
-        let url = `${parseBaseUrl}${props.Data.class}`;
-        const headers = {
-          "Content-Type": "application/json",
-          "X-Parse-Application-Id": parseAppId,
-          sessionToken: localStorage.getItem("accesstoken")
-        };
-        let body = {};
-        let res;
+        // Use reportService for Parse Cloud Functions
+        const currentUser = authService.getCurrentUser();
+        let userData = user;
+        
         if (localStorage.getItem("Extand_Class")) {
-          let data = JSON.parse(localStorage.getItem("Extand_Class"));
-          res = data[0];
-        } else {
-          res = user;
+          try {
+            const data = JSON.parse(localStorage.getItem("Extand_Class"));
+            userData = data[0];
+          } catch (e) {
+            console.warn("Failed to parse Extand_Class:", e);
+          }
         }
-        if (res) {
-          let json = res;
-          var reg = /(\#.*?\#)/gi; // eslint-disable-line
-          var str = props.Data.query;
-          var test = "";
-
-          if (props.Data.extendkey) {
-            let a = props.Data.extendkey.split(".");
-            if (a.length > 0) {
-              test = str.replace(reg, json[a[0]][a[1]]);
-            } else {
-              test = str.replace(reg, json[a[0]]);
-            }
-          } else {
-            test = str.replace(reg, json.objectId);
-          }
-          if (str.replace(reg, json.objectId)) {
-            body = test;
-          } else {
-            body = props.Data.query;
-          }
-        } else {
-          body = props.Data.query;
+        
+        if (!userData) {
+          userData = await userService.getCurrentUser();
         }
-        await axios.post(url, body, { headers: headers }).then((res) => {
-          if (res) {
-            if (res.data.result.length > 0) {
-              setresponse(res.data.result[0][props.Data.key]);
-            } else {
-              setresponse(0);
-            }
-            setLoading(false);
+        
+        // Extract reportId from query if it's a report function
+        // For now, use reportService with default parameters
+        const reportId = props.Data.class?.replace('/functions/', '') || props.Data.Redirect_id;
+        
+        try {
+          const reportData = await reportService.getReport(
+            reportId,
+            0,
+            200,
+            ""
+          );
+          
+          if (reportData && reportData.length > 0) {
+            // Extract the value based on props.Data.key
+            const value = reportData[0]?.[props.Data.key] || reportData.length;
+            setresponse(value);
           } else {
-            setLoading(false);
+            setresponse(0);
           }
-        });
+        } catch (error) {
+          console.error("Report service error:", error);
+          setresponse(0);
+        }
+        
+        setLoading(false);
       } catch (e) {
         console.error("Problem", e.message);
         setLoading(false);
@@ -81,95 +126,64 @@ const DashboardCard = (props) => {
       setLoading(true);
       try {
         const currentUser = authService.getCurrentUser();
-        let reg1 = /(\#.*?\#)/gi; // eslint-disable-line
-        let _query = props.Data.query;
-        let str = _query;
-        var test1;
-        str = str.split("#$").join("$");
-        str = str.split("#*").join("$");
-        str = str.split("_DOT_").join(".");
-
-        if (str.includes("#")) {
-          let resr;
-          if (localStorage.getItem("Extand_Class")) {
-            let data = JSON.parse(localStorage.getItem("Extand_Class"));
-            resr = data[0];
-          } else {
-            resr = user;
+        
+        // Get user data for hash replacements
+        let userData = user;
+        if (localStorage.getItem("Extand_Class")) {
+          try {
+            const data = JSON.parse(localStorage.getItem("Extand_Class"));
+            userData = data[0];
+          } catch (e) {
+            console.warn("Failed to parse Extand_Class:", e);
           }
-
-          let json = resr;
-          let output = str.match(reg1);
-          const HashCount = str.match(reg1);
-          if (HashCount.length > 1) {
-            // `getReplacedHashQuery` is used to replace multiple hash keyword with actual values from query
-            test1 = getReplacedHashQuery(str, json, user);
-          } else {
-            output = output.join();
-            output = output.substring(1, output.length - 1);
-            output = output.split(".");
-            if (output.length > 1) {
-              test1 = str.replace(reg1, json[output[0]][output[1]]);
-            } else if (json[output[0]]) {
-              if (typeof json[output[0]] === "object") {
-                test1 = str.replace(reg1, JSON.stringify(json[output[0]]));
-              } else {
-                test1 = str.replace(reg1, json[output[0]]);
-              }
-            } else {
-              test1 = str.replace(reg1, currentUser.id);
-            }
-          }
-        } else {
-          test1 = str.replace(reg1, currentUser.id);
         }
-        let url = `${parseBaseUrl}classes/${props.Data.class}?${test1}`;
-        const headers = {
-          "Content-Type": "application/json",
-          "X-Parse-Application-Id": parseAppId,
-          "X-Parse-Session-Token": localStorage.getItem("accesstoken")
-        };
-        // handle need your sign report count
+        
+        if (!userData) {
+          userData = await userService.getCurrentUser();
+        }
+
+        // Handle specific report IDs
         if (props.Data.Redirect_id === "4Hhwbp482K") {
+          // "Need your sign" - documents pending user's signature
           const params = {
             reportId: props.Data.Redirect_id,
             skip: 0,
             limit: 200
           };
-          // Use reportService instead of Parse endpoint
-          await reportService
-            .getReport(params.reportId, params.skip, params.limit, "")
-            .then((listData) => {
-              const filteredData = listData?.filter(
-                (x) => x.Signers && x.Signers.length > 0
-              );
-              let arr = [];
-              for (const obj of filteredData) {
-                const isSigner = obj.Signers?.some(
-                  (item) => item.UserId.objectId === currentUser.id
+          const listData = await reportService.getReport(
+            params.reportId,
+            params.skip,
+            params.limit,
+            ""
+          );
+          
+          const filteredData = listData?.filter(
+            (x) => x.Signers && x.Signers.length > 0
+          );
+          let arr = [];
+          for (const obj of filteredData) {
+            const isSigner = obj.Signers?.some(
+              (item) => item.UserId?.objectId === currentUser.id || item.UserId === currentUser.id
+            );
+            if (isSigner) {
+              let isRecord = false;
+              if (obj?.AuditTrail && obj?.AuditTrail.length > 0) {
+                isRecord = obj.AuditTrail.some(
+                  (item) =>
+                    (item?.UserPtr?.UserId?.objectId === currentUser.id ||
+                     item?.UserPtr?.UserId === currentUser.id) &&
+                    item.Activity === "Signed"
                 );
-                if (isSigner) {
-                  let isRecord;
-                  if (obj?.AuditTrail && obj?.AuditTrail.length > 0) {
-                    isRecord = obj?.AuditTrail.some(
-                      (item) =>
-                        item?.UserPtr?.UserId?.objectId === currentUser.id &&
-                        item.Activity === "Signed"
-                    );
-                  } else {
-                    isRecord = false;
-                  }
-                  if (isRecord === false) {
-                    arr.push(obj);
-                  }
-                }
               }
-              setresponse(arr.length);
-            });
+              if (!isRecord) {
+                arr.push(obj);
+              }
+            }
+          }
+          setresponse(arr.length);
         } else if (props.Data.Redirect_id === "1MwEuxLEkF") {
-          // Handle "Out for signatures" count - documents sent by user
+          // "Out for signatures" - documents sent by user
           const filters = {
-            createdBy: currentUser.id,
             isCompleted: false,
             isDeclined: false,
             isArchived: false,
@@ -178,19 +192,31 @@ const DashboardCard = (props) => {
           const count = await documentService.getDocumentCount(filters);
           setresponse(count);
         } else {
-          // Fallback to Parse REST API for other cards (to be migrated)
-          await axios.get(url, { headers: headers }).then((res) => {
-            if (res?.data?.[props.Data.key]) {
-              setresponse(parseInt(res.data[props.Data.key]));
-            } else if (res?.data?.results?.length > 0) {
-              setresponse(res.data.results.length);
+          // For other dashboard cards, try to use documentService or reportService
+          // Convert Parse query to REST API filters
+          const queryStr = props.Data.query || "";
+          const filters = parseQueryToFilters(queryStr, userData);
+          
+          // Determine what to fetch based on props.Data.class
+          if (props.Data.class === "contracts_Document") {
+            // Use documentService for document queries
+            if (props.Data.key === "count" || queryStr.includes("count")) {
+              const count = await documentService.getDocumentCount(filters);
+              setresponse(count);
             } else {
-              setresponse(0);
+              const response = await documentService.getUserDocuments(0, 1, filters);
+              const count = response.totalElements || response.length || 0;
+              setresponse(count);
             }
-          });
+          } else {
+            // For other classes, try to use reportService or return 0
+            console.warn(`Unknown class for dashboard card: ${props.Data.class}`);
+            setresponse(0);
+          }
         }
       } catch (e) {
-        console.error("Problem", e);
+        console.error("Problem fetching dashboard data:", e);
+        setresponse(0);
       } finally {
         setLoading(false);
       }
@@ -201,77 +227,69 @@ const DashboardCard = (props) => {
     if (props.FilterData && props.FilterData.queryType === "function") {
       setLoading(true);
       try {
-        let url = `${parseBaseUrl}${props.FilterData.class}`;
-        const headers = {
-          "Content-Type": "application/json",
-          "X-Parse-Application-Id": parseAppId,
-          sessionToken: localStorage.getItem("accesstoken")
-        };
-
-        let body = {};
-        var str = props.FilterData.query;
-        let restr = JSON.stringify(props.FilterData.query);
-        var reg = /(\#.*?\#)/gi; // eslint-disable-line
-        restr = restr.split("#$").join("$");
-        restr = restr.split("#*").join("$");
-        restr = restr.split("_DOT_").join(".");
-
-        if (restr.includes("#")) {
+        // Get user data for hash replacements
+        let userData = user;
+        if (localStorage.getItem("Extand_Class")) {
           try {
-            let res;
-            if (localStorage.getItem("Extand_Class")) {
-              let data = JSON.parse(localStorage.getItem("Extand_Class"));
-              res = data[0];
-            } else {
-              let resr = await userService.getCurrentUser();
-              if (resr) res = resr;
-            }
-
-            let json = res;
-            let output = restr.match(reg);
-            if (output.length === 1) {
-              output = output.filter((x) => x === "#filterCondition#");
-              if (output.length === 1) {
-                str = str.replace("#filterCondition#", props.Filter);
-              } else {
-                output = output.join();
-                output = output.substring(1, output.length - 1);
-                output = output.split(".");
-                if (output.length > 0) {
-                  str = str.replace(reg, json[output[0]][output[1]]);
-                } else {
-                  str = str.replace(reg, json[output[0]]);
-                }
-              }
-            } else if (output.length === 2) {
-              output = output.filter((x) => x !== "#filterCondition#");
-              if (output.length === 1) {
-                str = str.replace("#filterCondition#", props.Filter);
-                output = output.join();
-                output = output.substring(1, output.length - 1);
-                output = output.split(".");
-                if (output.length > 1) {
-                  str = str.replace(reg, json[output[0]][output[1]]);
-                } else {
-                  str = str.replace(reg, json[output[0]]);
-                }
-              }
-            }
-            body = str;
-            const response = await axios.post(url, body, { headers: headers });
-            if (response.data.result.length > 0) {
-              setresponse(response.data.result[0][props.FilterData.key]);
-              setLoading(false);
-            } else {
-              setresponse("0");
-              setLoading(false);
-            }
-          } catch (error) {
-            setLoading(false);
+            const data = JSON.parse(localStorage.getItem("Extand_Class"));
+            userData = data[0];
+          } catch (e) {
+            console.warn("Failed to parse Extand_Class:", e);
           }
         }
+        
+        if (!userData) {
+          userData = await userService.getCurrentUser();
+        }
+
+        // Process filter query with hash replacements
+        let queryStr = typeof props.FilterData.query === 'string' 
+          ? props.FilterData.query 
+          : JSON.stringify(props.FilterData.query);
+        
+        // Replace filter condition placeholder
+        if (props.Filter) {
+          queryStr = queryStr.replace(/#filterCondition#/g, props.Filter);
+        }
+        
+        // Replace user data placeholders
+        const hashRegex = /#([^#]+)#/g;
+        queryStr = queryStr.replace(hashRegex, (match, key) => {
+          if (key === 'objectId' || key === 'id') {
+            return authService.getCurrentUser()?.id || userData?.objectId || '';
+          } else if (key.includes('.')) {
+            const [parent, child] = key.split('.');
+            return userData?.[parent]?.[child] || '';
+          } else {
+            return userData?.[key] || '';
+          }
+        });
+
+        // Use reportService for filter queries
+        const reportId = props.FilterData.class?.replace('/functions/', '') || props.FilterData.Redirect_id;
+        
+        try {
+          const reportData = await reportService.getReport(
+            reportId,
+            0,
+            200,
+            props.Filter || ""
+          );
+          
+          if (reportData && reportData.length > 0) {
+            const value = reportData[0]?.[props.FilterData.key] || reportData.length;
+            setresponse(value);
+          } else {
+            setresponse("0");
+          }
+        } catch (error) {
+          console.error("Filter report service error:", error);
+          setresponse("0");
+        }
+        
+        setLoading(false);
       } catch (e) {
-        console.error("Problem", e);
+        console.error("Problem with filter render:", e);
         setLoading(false);
       }
     }

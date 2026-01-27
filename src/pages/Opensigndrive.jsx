@@ -11,10 +11,10 @@ import { useNavigate } from "react-router";
 import folderService from "../services/folderService";
 import userService from "../services/userService";
 import documentService from "../services/documentService";
+import { authService } from "../services/authService";
 import ModalUi from "../primitives/ModalUi";
 import TourContentWithBtn from "../primitives/TourContentWithBtn";
 import Tour from "../primitives/Tour";
-import axios from "axios";
 import Loader from "../primitives/Loader";
 import { useTranslation } from "react-i18next";
 
@@ -76,14 +76,12 @@ function Opensigndrive() {
     Name: "Name",
     Date: "Date"
   };
-  const currentUser =
-    localStorage.getItem(
-      `Parse/${localStorage.getItem("parseAppId")}/currentUser`
-    ) &&
-    localStorage.getItem(
-      `Parse/${localStorage.getItem("parseAppId")}/currentUser`
-    );
-  const jsonCurrentUser = JSON.parse(currentUser);
+  
+  // Get current user from JWT auth instead of Parse localStorage
+  const getCurrentUser = () => {
+    const user = authService.getCurrentUser();
+    return user || { objectId: "", id: "" };
+  };
 
   useEffect(() => {
     getDetails();
@@ -293,10 +291,11 @@ function Opensigndrive() {
         className: foldercls,
         objectId: parentId
       };
+      const currentUser = getCurrentUser();
       const CreatedBy = {
         __type: "Pointer",
         className: "_User",
-        objectId: jsonCurrentUser.objectId
+        objectId: currentUser.objectId || currentUser.id
       };
 
       try {
@@ -313,8 +312,7 @@ function Opensigndrive() {
           if (parentId) {
             folderData.Folder = parentId;
           }
-          await folderService.createFolder(folderData);
-          const res = await template.save();
+          const res = await folderService.createFolder(folderData);
           if (res) {
             const result = JSON.parse(JSON.stringify(res));
 
@@ -330,6 +328,7 @@ function Opensigndrive() {
           isShow: true,
           alertMessage: t("something-went-wrong-mssg")
         });
+        setIsFolderLoader(false);
       }
     } else {
       setError(t("fill-field"));

@@ -160,24 +160,21 @@ function SignYourSelf() {
       ? rowLevel.id
       : rowLevel?.objectId && rowLevel.objectId;
   const documentId = docId ? docId : signObjId && signObjId;
-  const senderUser =
-    localStorage.getItem(
-      `Parse/${localStorage.getItem("parseAppId")}/currentUser`
-    ) &&
-    localStorage.getItem(
-      `Parse/${localStorage.getItem("parseAppId")}/currentUser`
-    );
-  
-  // Fallback to JWT userId if Parse user not available (migrated from Parse auth)
-  let jsonSender = null;
-  if (senderUser) {
-    jsonSender = JSON.parse(senderUser);
-  } else {
+  // Get current user from JWT auth instead of Parse localStorage
+  const getSenderUser = () => {
+    const currentUser = authService.getCurrentUser();
+    if (currentUser) {
+      return { objectId: currentUser.id || currentUser.objectId };
+    }
+    // Fallback to localStorage userId if available
     const userId = localStorage.getItem('userId');
     if (userId) {
-      jsonSender = { objectId: userId };
+      return { objectId: userId };
     }
-  }
+    return { objectId: "" };
+  };
+  
+  const jsonSender = getSenderUser();
 
   useEffect(() => {
     dispatch(resetWidgetState([]));
@@ -569,19 +566,20 @@ function SignYourSelf() {
     }
     try {
       // Use documentService instead of Parse.Object
-      docCls.id = documentId;
+      const updateData = {
+        IsSignyourself: true
+      };
+      
       if (xyPosition?.length > 0) {
-        docCls.set("Placeholders", updatedXYPosition);
+        updateData.Placeholders = updatedXYPosition;
       }
-      docCls.set("IsSignyourself", true);
       if (pdfUrl) {
-        docCls.set("URL", pdfUrl);
+        updateData.URL = pdfUrl;
       }
-      const res = await docCls.save();
+      
+      const res = await documentService.updateDocument(documentId, updateData);
       if (res) {
-        if (res) {
-          pdfDetails[0] = { ...pdfDetails[0], URL: pdfUrl };
-        }
+        pdfDetails[0] = { ...pdfDetails[0], URL: pdfUrl || pdfDetails[0]?.URL };
       }
     } catch (e) {
       console.log("error", e);
@@ -601,10 +599,10 @@ function SignYourSelf() {
       } else {
         try {
           // Use userService instead of Parse.Query
-
           const user = await userService.getCurrentUser();
           if (user) {
-            isEmailVerified = user?.get("emailVerified");
+            // Use plain object property access instead of Parse .get() method
+            isEmailVerified = user?.emailVerified || user?.EmailVerified;
             setIsEmailVerified(isEmailVerified);
           }
         } catch (e) {
