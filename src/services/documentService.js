@@ -140,8 +140,16 @@ export const documentService = {
    * @returns {Promise<Object>} Certificate details with CertificateUrl
    */
   generateCertificate: async (docId) => {
-    const response = await apiClient.post('/documents/certificate', { docId });
-    return response.data;
+    try {
+      const response = await apiClient.post('/documents/certificate', { docId });
+      return response.data;
+    } catch (error) {
+      // If endpoint doesn't exist (404) or method not allowed (405), return error
+      if (error.response?.status === 404 || error.response?.status === 405) {
+        throw new Error('Certificate generation endpoint is not available. Please contact support.');
+      }
+      throw error;
+    }
   },
 
   /**
@@ -154,6 +162,17 @@ export const documentService = {
   getDocumentCount: async (filters = {}) => {
     const response = await apiClient.get('/documents/count', { params: filters });
     return response.data.count;
+  },
+
+  /**
+   * Sign PDF document
+   * Replaces: Parse.Cloud.run('signPdf', params)
+   * @param {Object} params - Signing parameters {pdfFile, docId, userId, signature, isCustomCompletionMail}
+   * @returns {Promise<Object>} Signed document result
+   */
+  signPdf: async (params) => {
+    const response = await apiClient.post('/documents/sign', params);
+    return response.data;
   }
 };
 

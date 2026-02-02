@@ -161,7 +161,21 @@ const Contactbook = (props) => {
   };
 
   const handleUserData = (data) => {
-    props.setList((prevData) => [data, ...prevData]);
+    // Add new contact to the list
+    // Transform the contact data to match the expected format
+    const transformedContact = {
+      objectId: data.objectId || data.id,
+      id: data.id || data.objectId,
+      Name: data.Name || data.name || '',
+      Email: data.Email || data.email || null,
+      Phone: data.Phone || data.phone || null,
+      Company: data.Company || data.company || null,
+      JobTitle: data.JobTitle || data.jobTitle || null,
+      Note: data.Note || data.note || null,
+      createdAt: data.createdAt,
+      updatedAt: data.updatedAt
+    };
+    props.setList((prevData) => [transformedContact, ...prevData]);
   };
 
   const handleDelete = async (item) => {
@@ -169,26 +183,17 @@ const Contactbook = (props) => {
     setActLoader({ [`${item.objectId}`]: true });
     try {
       await contactService.deleteContact(item.objectId);
-      /* Original Parse API code removed */
-      /*
-      const res = await axios.put(url + item.objectId, body, {
-        headers: {
-          "Content-Type": "application/json",
-          "X-Parse-Application-Id": localStorage.getItem("parseAppId"),
-          "X-Parse-Session-Token": localStorage.getItem("accesstoken")
-        }
-      });
-      if (res.data && res.data.updatedAt) {
-        setActLoader({});
-        showAlert("success", t("record-delete-alert"));
-        const upldatedList = props.List.filter(
-          (x) => x.objectId !== item.objectId
-        );
-        props.setList(upldatedList);
-      } */
+      // Remove deleted contact from list
+      setActLoader({});
+      showAlert("success", t("record-delete-alert"));
+      const updatedList = props.List.filter(
+        (x) => x.objectId !== item.objectId
+      );
+      props.setList(updatedList);
     } catch (err) {
       console.log("err", err);
-      showAlert("danger", t("something-went-wrong-mssg"));
+      const errorMessage = err?.response?.data?.error || err?.response?.data?.message || err?.message || '';
+      showAlert("danger", errorMessage || t("something-went-wrong-mssg"));
       setActLoader({});
     }
   };

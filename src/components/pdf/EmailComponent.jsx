@@ -1,6 +1,7 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   handleToPrint,
+  findContact,
 } from "../../constant/Utils";
 import {
   emailRegex,
@@ -24,16 +25,40 @@ function EmailComponent({
   const [isLoading, setIsLoading] = useState(false);
   const [emailErr, setEmailErr] = useState(false);
   const [isDownloading, setIsDownloading] = useState("");
+  const [suggestions, setSuggestions] = useState([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const suggestionRef = useRef(null);
+  const inputRef = useRef(null);
   const isAndroid = /Android/i.test(navigator.userAgent);
+
+  // Handle click outside to close suggestions
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (suggestionRef.current && !suggestionRef.current.contains(event.target) &&
+          inputRef.current && !inputRef.current.contains(event.target)) {
+        setShowSuggestions(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
 
   //function for send email
   const sendEmail = async () => {
     setIsLoading(true);
     try {
       const docId = pdfDetails?.[0]?.objectId || pdfDetails?.[0]?.id;
-      const emailData = { recipients: emailList };
+      // Backend expects "emails" (array of email strings) and optional "message"
+      // emailList is an array of email strings
+      const emailData = { 
+        emails: emailList,
+        message: "" // Optional message field
+      };
       const sendmail = await documentService.forwardDocument(docId, emailData);
-      if (sendmail?.status === "success") {
+      // Backend returns { success: true, message: "...", recipients: number }
+      if (sendmail?.success === true || sendmail?.status === "success") {
         setSuccessEmail(true);
         setIsEmail(false);
         setTimeout(() => {
@@ -69,11 +94,44 @@ function EmailComponent({
     const updateEmailCount = emailList.filter((data, key) => key !== index);
     setEmailList(updateEmailCount);
   };
-  //function for get email value
-  const handleEmailValue = (e) => {
-    const value = e.target.value?.toLowerCase()?.replace(/\s/g, "");
+  //function for get email value with contact suggestions
+  const handleEmailValue = async (e) => {
+    const value = e.target.value;
+    const normalizedValue = value?.toLowerCase()?.replace(/\s/g, "");
     setEmailErr(false);
-    setEmailValue(value);
+    setEmailValue(value); // Keep original value for display
+    
+    // Show suggestions if user is typing (at least 2 characters)
+    if (normalizedValue && normalizedValue.length >= 2) {
+      try {
+        const contactRes = await findContact(normalizedValue);
+        if (contactRes && contactRes.length > 0) {
+          setSuggestions(contactRes);
+          setShowSuggestions(true);
+        } else {
+          setSuggestions([]);
+          setShowSuggestions(false);
+        }
+      } catch (error) {
+        console.warn("Error fetching contact suggestions:", error);
+        setSuggestions([]);
+        setShowSuggestions(false);
+      }
+    } else {
+      setSuggestions([]);
+      setShowSuggestions(false);
+    }
+  };
+
+  // Handle selecting a contact from suggestions
+  const handleSelectContact = (contact) => {
+    const email = contact.Email || contact.email;
+    if (email && !emailList.includes(email.toLowerCase())) {
+      setEmailList((prev) => [...prev, email.toLowerCase()]);
+      setEmailValue("");
+      setShowSuggestions(false);
+      setSuggestions([]);
+    }
   };
 
   //function for save email in array after press enter
@@ -153,62 +211,135 @@ function EmailComponent({
             <p className="font-medium text-[15px] mb-[5px] text-base-content align-baseline">
               {t("email-mssg")}
             </p>
-            {emailList.length > 0 ? (
-              <div className="p-0 border-[1px] op-border-primary w-full rounded-md text-[15px] overflow-hidden">
-                <div className="flex flex-row flex-wrap">
-                  {emailList.map((data, ind) => {
-                    return (
-                      <div
-                        className="flex flex-row items-center op-bg-primary mx-[2px] mt-[2px] rounded-md py-[5px] px-[10px]"
-                        key={ind}
-                      >
-                        <span className="text-base-100 text-[13px]">
-                          {data}
-                        </span>
-                        <span
-                          className="text-base-100 text-[13px] font-semibold ml-[7px] cursor-pointer"
-                          onClick={() => removeChip(ind)}
+            <div className="relative">
+              {emailList.length > 0 ? (
+                <div className="p-0 border-[1px] op-border-primary w-full rounded-md text-[15px] overflow-hidden">
+                  <div className="flex flex-row flex-wrap">
+                    {emailList.map((data, ind) => {
+                      return (
+                        <div
+                          className="flex flex-row items-center op-bg-primary mx-[2px] mt-[2px] rounded-md py-[5px] px-[10px]"
+                          key={ind}
                         >
-                          <i className="fa-light fa-xmark"></i>
-                        </span>
-                      </div>
-                    );
-                  })}
+                          <span className="text-base-100 text-[13px]">
+                            {data}
+                          </span>
+                          <span
+                            className="text-base-100 text-[13px] font-semibold ml-[7px] cursor-pointer"
+                            onClick={() => removeChip(ind)}
+                          >
+                            <i className="fa-light fa-xmark"></i>
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {emailList.length <= 9 && (
+                    <div className="relative">
+                      <input
+                        ref={inputRef}
+                        type="email"
+                        value={emailValue}
+                        className="p-[10px] rounded-md w-full text-[15px] bg-transparent outline-none"
+                        onChange={handleEmailValue}
+                        onKeyDown={handleEnterPress}
+                        onFocus={() => emailValue && emailValue.length >= 2 && setShowSuggestions(true)}
+                        onBlur={() => {
+                          // Delay to allow suggestion click
+                          setTimeout(() => {
+                            if (emailValue && emailValue.match(emailRegex)) {
+                              handleEnterPress("add");
+                            }
+                          }, 200);
+                        }}
+                        onInvalid={(e) =>
+                          e.target.setCustomValidity(t("input-required"))
+                        }
+                        onInput={(e) => e.target.setCustomValidity("")}
+                        placeholder={t("enter-email-plaholder") || "Enter email or select from contacts..."}
+                        required
+                      />
+                      {showSuggestions && suggestions.length > 0 && (
+                        <ul
+                          ref={suggestionRef}
+                          className="absolute z-50 left-0 top-full w-full max-h-[200px] overflow-y-auto bg-base-200 border border-base-300 rounded-md shadow-lg mt-1"
+                        >
+                          {suggestions.map((contact, index) => {
+                            const email = contact.Email || contact.email;
+                            const name = contact.Name || contact.name || email;
+                            const isAlreadyAdded = emailList.includes(email?.toLowerCase());
+                            return (
+                              <li
+                                key={index}
+                                className={`py-2 px-3 w-full text-sm cursor-pointer hover:bg-base-300 ${
+                                  isAlreadyAdded ? 'opacity-50 cursor-not-allowed' : ''
+                                }`}
+                                onClick={() => !isAlreadyAdded && handleSelectContact(contact)}
+                              >
+                                <div className="flex items-center justify-between">
+                                  <span>{name} &lt;{email}&gt;</span>
+                                  {isAlreadyAdded && (
+                                    <span className="text-xs text-base-content/60">
+                                      {t("already-added") || "Added"}
+                                    </span>
+                                  )}
+                                </div>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      )}
+                    </div>
+                  )}
                 </div>
-                {emailList.length <= 9 && (
+              ) : (
+                <div className="relative">
                   <input
+                    ref={inputRef}
                     type="email"
                     value={emailValue}
-                    className="p-[10px] rounded-md w-full text-[15px] bg-transparent outline-none"
+                    className="p-[10px] pb-[20px] text-base-content rounded-md w-full text-[15px] outline-none bg-transparent border-[1px] op-border-primary"
                     onChange={handleEmailValue}
                     onKeyDown={handleEnterPress}
-                    onBlur={() => emailValue && handleEnterPress("add")}
+                    onFocus={() => emailValue && emailValue.length >= 2 && setShowSuggestions(true)}
+                    placeholder={t("enter-email-plaholder") || "Enter email or select from contacts..."}
+                    onBlur={() => {
+                      // Delay to allow suggestion click
+                      setTimeout(() => {
+                        if (emailValue && emailValue.match(emailRegex)) {
+                          handleEnterPress("add");
+                        }
+                      }, 200);
+                    }}
                     onInvalid={(e) =>
                       e.target.setCustomValidity(t("input-required"))
                     }
                     onInput={(e) => e.target.setCustomValidity("")}
                     required
                   />
-                )}
-              </div>
-            ) : (
-              <div>
-                <input
-                  type="email"
-                  value={emailValue}
-                  className="p-[10px] pb-[20px] text-base-content rounded-md w-full text-[15px] outline-none bg-transparent border-[1px] op-border-primary"
-                  onChange={handleEmailValue}
-                  onKeyDown={handleEnterPress}
-                  placeholder={t("enter-email-plaholder")}
-                  onBlur={() => emailValue && handleEnterPress("add")}
-                  onInvalid={(e) =>
-                    e.target.setCustomValidity(t("input-required"))
-                  }
-                  onInput={(e) => e.target.setCustomValidity("")}
-                  required
-                />
-              </div>
-            )}
+                  {showSuggestions && suggestions.length > 0 && (
+                    <ul
+                      ref={suggestionRef}
+                      className="absolute z-50 left-0 top-full w-full max-h-[200px] overflow-y-auto bg-base-200 border border-base-300 rounded-md shadow-lg mt-1"
+                    >
+                      {suggestions.map((contact, index) => {
+                        const email = contact.Email || contact.email;
+                        const name = contact.Name || contact.name || email;
+                        return (
+                          <li
+                            key={index}
+                            className="py-2 px-3 w-full text-sm cursor-pointer hover:bg-base-300"
+                            onClick={() => handleSelectContact(contact)}
+                          >
+                            {name} &lt;{email}&gt;
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </div>
+              )}
+            </div>
             {emailErr && (
               <p className="text-xs text-[red] ml-1.5 mt-0.5">
                 {t("email-error-1")}

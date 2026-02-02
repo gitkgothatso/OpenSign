@@ -186,45 +186,39 @@ const ImportContact = ({ setLoader, onImport, showAlert }) => {
     e.stopPropagation();
     setLoader(true);
     try {
-      // Session token handled by apiClient interceptor
-      if (localStorage.getItem("TenantId") && sessionToken) {
-        try {
-          const filterdata = importedData.map((x) => ({
-            Name: x.Name,
-            Email: x.Email,
-            Phone: x.Phone,
-            Company: x.Company,
-            JobTitle: x.JobTitle,
-            TenantId: localStorage.getItem("TenantId")
-          }));
-          const contacts = JSON.stringify(filterdata);
-          const res = await contactService.createBatchContacts(contacts);
-          if (res) {
-            showAlert(
-              "info",
-              t("contact-imported", {
-                imported: res?.success || 0,
-                failed: res?.failed || 0
-              })
-            );
-            if (res?.success > 0) {
-              setTimeout(() => window.location.reload(), 1500);
-            }
-          }
-        } catch (err) {
-          console.log("err while creating batch contact", err);
-          showAlert("danger", t("something-went-wrong-mssg"));
-        } finally {
-          onImport && onImport();
-          setImportedData([]);
-          setInvalidRecords(0);
+      // Backend expects array of CreateContactRequest objects (camelCase)
+      const contacts = importedData.map((x) => ({
+        name: x.Name || '',
+        email: x.Email || '',
+        phone: x.Phone || '',
+        company: x.Company || '',
+        jobTitle: x.JobTitle || '',
+        note: '',
+        tags: []
+      }));
+      const res = await contactService.createBatchContacts(contacts);
+      if (res && Array.isArray(res)) {
+        const successCount = res.length;
+        showAlert(
+          "info",
+          t("contact-imported", {
+            imported: successCount,
+            failed: importedData.length - successCount
+          })
+        );
+        if (successCount > 0) {
+          setTimeout(() => window.location.reload(), 1500);
         }
-      } else {
-        dispatch(sessionStatus(false));
       }
     } catch (err) {
-      console.error("invalid session or missing tenantId ", err);
-      dispatch(sessionStatus(false));
+      console.error("Error importing contacts", err);
+      const errorMessage = err?.response?.data?.error || err?.response?.data?.message || err?.message || '';
+      showAlert("danger", errorMessage || t("something-went-wrong-mssg"));
+    } finally {
+      setLoader(false);
+      onImport && onImport();
+      setImportedData([]);
+      setInvalidRecords(0);
     }
   };
 

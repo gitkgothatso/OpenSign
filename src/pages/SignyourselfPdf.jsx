@@ -728,9 +728,12 @@ function SignYourSelf() {
   const signPdfFun = async (base64Url, documentId) => {
     let isCustomCompletionMail = false;
     const tenantDetails = await getTenantDetails(jsonSender.objectId);
+    // Only check for error string, not empty object (which is valid for Sign Yourself)
     if (tenantDetails && tenantDetails === "user does not exist!") {
-      alert(t("user-not-exist"));
-    } else {
+      // For Sign Yourself, we can proceed without tenant details
+      console.warn("Tenant details not available, proceeding with default completion email");
+    } else if (tenantDetails && typeof tenantDetails === 'object') {
+      // tenantDetails is a valid object (may be empty for Sign Yourself)
       if (
         tenantDetails?.CompletionBody &&
         tenantDetails?.CompletionSubject
@@ -769,15 +772,48 @@ function SignYourSelf() {
     const params = {
       pdfFile: base64Url,
       docId: documentId,
+      userId: jsonSender.objectId, // Add userId as required by backend
       isCustomCompletionMail: isCustomCompletionMail,
       signature: suffixbase64,
     };
     const resSignPdf = await documentService.signPdf(params);
-    if (resSignPdf) {
-      const signedpdf = JSON.parse(JSON.stringify(resSignPdf));
-      setPdfUrl(signedpdf);
-      dispatch(setTypedSignFont("Fasthand"));
-      getDocumentDetails(false);
+    if (resSignPdf && resSignPdf.status === "success") {
+      // Backend returns {status, signedPdfUrl, documentId, isCompleted}
+      const signedPdfUrl = resSignPdf.signedPdfUrl || resSignPdf.url;
+      const isCompleted = resSignPdf.isCompleted || false;
+      
+      if (signedPdfUrl) {
+        setPdfUrl(signedPdfUrl);
+        dispatch(setTypedSignFont("Fasthand"));
+        
+        // If document is completed, trigger celebration and show email component immediately
+        if (isCompleted) {
+          setIsCelebration(true);
+          setTimeout(() => setIsCelebration(false), 5000);
+          setIsCompleted(true);
+          setIsUiLoading(false);
+          setIsEmail(true); // Show EmailComponent with download buttons
+          setXyPosition([]);
+          setSignBtnPosition([]);
+        }
+        
+        // Show success message
+        setIsAlert({
+          header: t("document-signed") || "Success",
+          isShow: true,
+          alertMessage: t("document-has-been-signed-by-you")
+        });
+        
+        // Refresh document details to get latest state
+        getDocumentDetails(false);
+      } else {
+        console.error("Sign PDF response missing URL:", resSignPdf);
+        alert(t("something-went-wrong-mssg"));
+      }
+    } else {
+      const errorMsg = resSignPdf?.message || t("something-went-wrong-mssg");
+      console.error("Sign PDF failed:", resSignPdf);
+      alert(errorMsg);
     }
   };
   //function for save x and y position and show signature  tab on that position

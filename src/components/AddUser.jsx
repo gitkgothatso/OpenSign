@@ -64,15 +64,13 @@ const AddUser = (props) => {
   const checkUserExist = async () => {
     try {
       // Use new Java backend user service to check by email
+      // getUserByEmail returns null if user not found (404), so no need for try-catch
       const user = await userService.getUserByEmail(formdata.email);
       return !!user; // Return true if user exists
     } catch (err) {
-      // 404 means user not found - that's expected
-      if (err.response?.status === 404) {
-        return false;
-      }
+      // Only log unexpected errors
       console.error("Error checking user existence:", err);
-      throw err;
+      return false; // Return false on any error to allow user creation
     }
   };
 
@@ -80,79 +78,142 @@ const AddUser = (props) => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     e.stopPropagation();
+    
+    console.log("=== Form Submit Handler Called ===");
+    console.log("Form data:", { ...formdata, password: "***" });
+    console.log("TenantId:", localStorage.getItem("TenantId"));
+    
+    // Validate required fields
+    if (!formdata.name || !formdata.email || !formdata.role) {
+      const missingFields = [];
+      if (!formdata.name) missingFields.push("name");
+      if (!formdata.email) missingFields.push("email");
+      if (!formdata.role) missingFields.push("role");
+      console.error("Missing required fields:", missingFields);
+      props.showAlert("danger", t("input-required") || `Please fill in: ${missingFields.join(", ")}`);
+      return;
+    }
+    
     if (!emailRegex.test(formdata.email)) {
-      alert(t("valid-email-alert"));
-    } else {
-      const localUser = JSON.parse(localStorage.getItem("Extand_Class"))?.[0];
-      setIsFormLoader(true);
+      props.showAlert("danger", t("valid-email-alert"));
+      return;
+    }
+    
+    if (!formdata.password || formdata.password.length < 8) {
+      props.showAlert("danger", t("password-must-be-at-least-8-characters") || "Password must be at least 8 characters");
+      return;
+    }
+    
+    const localUser = JSON.parse(localStorage.getItem("Extand_Class"))?.[0];
+    let tenantId = localStorage.getItem("TenantId");
+    
+    // If TenantId not in localStorage, try to get it from user profile
+    if (!tenantId) {
+      console.log("TenantId not in localStorage, fetching from user profile...");
       try {
-        const userExists = await checkUserExist();
-        if (userExists) {
-          props.showAlert("danger", t("user-already-exist"));
-          setIsFormLoader(false);
+        const currentUser = await userService.getCurrentUser();
+        // Try multiple possible formats for tenantId
+        tenantId = currentUser?.TenantId?.objectId || 
+                   currentUser?.TenantId || 
+                   currentUser?.tenantId?.objectId || 
+                   currentUser?.tenantId ||
+                   localUser?.TenantId?.objectId ||
+                   localUser?.TenantId ||
+                   localUser?.tenantId?.objectId ||
+                   localUser?.tenantId ||
+                   null;
+        
+        if (tenantId) {
+          console.log("Found TenantId from user profile:", tenantId);
+          localStorage.setItem("TenantId", tenantId);
         } else {
-          if (localStorage.getItem("TenantId")) {
-            const timezone = usertimezone;
-            try {
-              const params = {
-                name: formdata.name,
-                email: formdata.email,
-                phone: formdata.phone,
-                password: formdata.password,
-                role: formdata.role,
-                team: formdata.team,
-                timezone: timezone,
-                tenantId: localStorage.getItem("TenantId"),
-                organization: {
-                  objectId: localUser?.OrganizationId?.objectId,
-                  company: localUser?.Company
-                },
-              };
-              
-              // Use new Java backend API to create user
-              const response = await apiClient.post('/users', params);
-              const parseData = response.data;
-              
-              if (props.closePopup) {
-                props.closePopup();
-              }
-              if (props.handleUserData) {
-                if (formdata?.team) {
-                  const team = teamList.find((x) => x.objectId === formdata.team);
-                  if (team) {
-                    parseData.TeamIds = parseData.TeamIds?.map((y) =>
-                      y.objectId === team.objectId ? team : y
-                    ) || [team];
-                  }
-                }
-                props.handleUserData(parseData);
-              }
-              setIsFormLoader(false);
-              setFormdata({
-                name: "",
-                email: "",
-                phone: "",
-                team: "",
-                role: "",
-                password: generatePassword(12)
-              });
-              props.showAlert("success", t("user-created-successfully"));
-            } catch (err) {
-              console.error("Error creating user:", err);
-              setIsFormLoader(false);
-              const errorMsg = err.response?.data?.error || t("something-went-wrong-mssg");
-              props.showAlert("danger", errorMsg);
-            }
-          } else {
-            setIsFormLoader(false);
-            props.showAlert("danger", t("something-went-wrong-mssg"));
-          }
+          console.warn("TenantId not found in user profile either. Proceeding without tenantId (backend allows optional tenantId).");
         }
       } catch (err) {
-        console.error("Error in form submission:", err);
-        setIsFormLoader(false);
-        props.showAlert("danger", t("something-went-wrong-mssg"));
+        console.error("Error fetching user profile for TenantId:", err);
+        // Continue without tenantId - backend allows it to be optional
       }
+    }
+    
+    setIsFormLoader(true);
+    try {
+      const userExists = await checkUserExist();
+      if (userExists) {
+        props.showAlert("danger", t("user-already-exist"));
+        setIsFormLoader(false);
+        return;
+      }
+      
+      const timezone = usertimezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
+      const params = {
+        name: formdata.name,
+        email: formdata.email,
+        phone: formdata.phone || "",
+        password: formdata.password,
+        role: formdata.role,
+        timezone: timezone
+      };
+      
+      // Only include tenantId if we have it (backend allows it to be optional)
+      if (tenantId) {
+        params.tenantId = tenantId;
+      }
+      
+      // Only include organization if we have the data
+      if (localUser?.OrganizationId?.objectId || localUser?.Company) {
+        params.organization = {
+          objectId: localUser?.OrganizationId?.objectId || null,
+          company: localUser?.Company || null
+        };
+      }
+      
+      // Only include team if selected
+      if (formdata.team) {
+        params.team = formdata.team;
+      }
+      
+      console.log("Creating user with params:", { ...params, password: "***" }); // Log without password
+      
+      // Use new Java backend API to create user
+      const response = await apiClient.post('/users', params);
+      const parseData = response.data;
+      
+      console.log("User created successfully:", parseData);
+      
+      if (props.closePopup) {
+        props.closePopup();
+      }
+      if (props.handleUserData) {
+        if (formdata?.team) {
+          const team = teamList.find((x) => x.objectId === formdata.team);
+          if (team) {
+            parseData.TeamIds = parseData.TeamIds?.map((y) =>
+              y.objectId === team.objectId ? team : y
+            ) || [team];
+          }
+        }
+        props.handleUserData(parseData);
+      }
+      setIsFormLoader(false);
+      setFormdata({
+        name: "",
+        email: "",
+        phone: "",
+        team: "",
+        role: "",
+        password: generatePassword(12)
+      });
+      props.showAlert("success", t("user-created-successfully"));
+    } catch (err) {
+      console.error("Error creating user:", err);
+      console.error("Error details:", {
+        status: err.response?.status,
+        data: err.response?.data,
+        message: err.message
+      });
+      setIsFormLoader(false);
+      const errorMsg = err.response?.data?.error || err.response?.data?.message || err.message || t("something-went-wrong-mssg");
+      props.showAlert("danger", errorMsg);
     }
   };
 
@@ -299,16 +360,21 @@ h-full text-[13px]">                                                            
                         </select>
                       </div>
                       <div className="flex items-center mt-3 gap-2 text-white">
-                        <button type="submit" className="op-btn op-btn-primary">
-                          {t("submit")}
+                        <button 
+                          type="submit" 
+                          className="op-btn op-btn-primary"
+                          disabled={isFormLoader}
+                        >
+                          {isFormLoader ? t("submitting") || "Submitting..." : t("submit")}
                         </button>
-                        <div
+                        <button
                           type="button"
                           onClick={() => handleReset()}
                           className="op-btn op-btn-secondary"
+                          disabled={isFormLoader}
                         >
                           {t("cancel")}
-                        </div>
+                        </button>
                       </div>
                     </form>
               </div>

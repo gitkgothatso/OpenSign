@@ -151,19 +151,18 @@ const Report = () => {
         "X-Parse-Application-Id": localStorage.getItem("parseAppId"),
         sessiontoken: localStorage.getItem("accesstoken")
       };
+      // Calculate skip and limit values (needed for error logging)
+      const skipRecord = id === "4Hhwbp482K" ? 0 : skipUserRecord;
+      const limitRecord = id === "4Hhwbp482K" ? 200 : limit;
+      
       try {
-        const skipRecord = id === "4Hhwbp482K" ? 0 : skipUserRecord;
-        const limitRecord = id === "4Hhwbp482K" ? 200 : limit;
-        const params = { reportId: id, skip: skipRecord, limit: limitRecord };
-        if (term) {
-          params.searchTerm = term;
-        }
         // Use reportService instead of Parse endpoint
+        // Pass searchTerm only if it's defined and not empty
         const res = await reportService.getReport(
-          params.reportId,
-          params.skip,
-          params.limit,
-          params.searchTerm || ""
+          id,
+          skipRecord,
+          limitRecord,
+          term && term.trim() !== '' ? term.trim() : undefined
         );
         const extraHeads =
           id === "4Hhwbp482K" ? [...extraCols, "Expiry Date"] : extraCols;
@@ -203,25 +202,47 @@ const Report = () => {
             prevRecord.length > 0 ? [...prevRecord, ...arr] : arr
           );
         } else {
-          if (res.length >= docPerPage) {
-            setIsMoreDocs(true);
+          // For contacts and other reports, handle the response directly
+          if (Array.isArray(res)) {
+            if (res.length >= docPerPage) {
+              setIsMoreDocs(true);
+            } else {
+              setIsMoreDocs(false);
+            }
+            if (!res.error) {
+              setIsNextRecord(false);
+              // For contacts, always replace the list (don't append)
+              if (id === "contacts") {
+                setList(res);
+              } else {
+                setList((prevRecord) =>
+                  prevRecord.length > 0
+                    ? [...prevRecord, ...res]
+                    : res
+                );
+              }
+            }
           } else {
+            // If res is not an array, log error and set empty list
+            console.error("Report response is not an array:", res);
+            setList([]);
             setIsMoreDocs(false);
-          }
-          if (!res.error) {
-            setIsNextRecord(false);
-            setList((prevRecord) =>
-              prevRecord.length > 0
-                ? [...prevRecord, ...res]
-                : res
-            );
           }
         }
         setIsLoader(false);
       } catch (err) {
         const isCancel = axios.isCancel(err);
         if (!isCancel) {
-          console.log("err ", err);
+          console.error("Report error:", err);
+          // Log detailed error information
+          if (err.response) {
+            console.error("Report API Error Details:", {
+              status: err.response.status,
+              statusText: err.response.statusText,
+              data: err.response.data,
+              requestParams: { reportId: id, skip: skipRecord, limit: limitRecord, searchTerm: term }
+            });
+          }
           setIsLoader(false);
         }
       }

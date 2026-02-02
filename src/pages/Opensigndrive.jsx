@@ -409,14 +409,16 @@ function Opensigndrive() {
       }
     };
 
-    container.addEventListener("mousemove", (e) => {
+    const handleMouseMove = (e) => {
       const rect = container.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const containerWidth = rect.width;
 
       // Calculate the scroll amount based on the cursor's position
       scrollAmount = (x / containerWidth) * scrollSpeed;
-    });
+    };
+
+    container.addEventListener("mousemove", handleMouseMove);
 
     scroll();
   };

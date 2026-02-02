@@ -5,10 +5,10 @@ import React, {
 import { Navigate, useNavigate } from "react-router";
 import authService from "../services/authService";
 import userService from "../services/userService";
+import fileService from "../services/fileService";
 import { SaveFileSize } from "../constant/saveFileSize";
 import dp from "../assets/images/dp.png";
 import { sanitizeFileName } from "../utils";
-import axios from "axios";
 import Tooltip from "../primitives/Tooltip";
 import {
   getSecureUrl,
@@ -28,8 +28,7 @@ function UserProfile() {
   let extendUser =
     localStorage.getItem("Extand_Class") &&
     JSON.parse(localStorage.getItem("Extand_Class"));
-  const [parseBaseUrl] = useState(localStorage.getItem("baseUrl"));
-  const [parseAppId] = useState(localStorage.getItem("parseAppId"));
+  // Parse SDK removed - using REST API
   const [editmode, setEditMode] = useState(false);
   const [name, SetName] = useState(localStorage.getItem("username"));
   const [Phone, SetPhone] = useState(UserProfile && UserProfile.phone);
@@ -126,34 +125,25 @@ function UserProfile() {
   //  `updateExtUser` is used to update user details in extended class
   const updateExtUser = async (obj) => {
     try {
-      const extData = JSON.parse(localStorage.getItem("Extand_Class"));
-      const ExtUserId = extData?.[0]?.objectId;
-      const body = {
-        Phone: obj?.Phone || "",
-        Name: obj.Name,
-        JobTitle: jobTitle,
-        Company: company,
-        Language: obj?.language || "",
+      const updateData = {
+        phone: obj?.Phone || "",
+        name: obj.Name,
+        jobTitle: jobTitle,
+        company: company,
+        language: obj?.language || "",
       };
 
-      await axios.put(
-        parseBaseUrl + "classes/contracts_Users/" + ExtUserId,
-        body,
-        {
-          headers: {
-            "Content-Type": "application/json",
-            "X-Parse-Application-Id": parseAppId,
-            "X-Parse-Session-Token": localStorage.getItem("accesstoken")
-          }
-        }
-      );
+      // Use REST API instead of Parse REST API
+      await userService.updateProfile(updateData);
+      
+      // Refresh user data from API
       const res = await userService.getCurrentUser();
-
       const json = JSON.parse(JSON.stringify([res]));
       const extRes = JSON.stringify(json);
       localStorage.setItem("Extand_Class", extRes);
     } catch (e) {
-      console.log("error in save data in contracts_Users class");
+      console.error("Error updating user profile:", e);
+      throw e; // Re-throw to allow caller to handle error
     }
   };
   // file upload function
@@ -165,37 +155,40 @@ function UserProfile() {
 
   const handleFileUpload = async (file) => {
     const size = file.size;
-    const pdfFile = file;
     const fileName = file.name;
     const name = sanitizeFileName(fileName);
+    
     // Use file upload service instead of Parse.File
-
     try {
-      const response = await parseFile.save({
-        progress: (progressValue, loaded, total) => {
+      const response = await fileService.uploadFile(
+        file,
+        name,
+        file.type || 'image/png',
+        (progressValue, loaded, total) => {
           if (progressValue !== null) {
             const percentCompleted = Math.round((loaded * 100) / total);
-            // console.log("percentCompleted ", percentCompleted);
             setpercentage(percentCompleted);
           }
         }
-      });
-      // // The response object will contain information about the uploaded file
-      // console.log("File uploaded:", response);
-
-      if (response?.url()) {
-        const fileRes = await getSecureUrl(response?.url());
-        if (fileRes?.url) {
-          setImage(fileRes?.url);
-          setpercentage(0);
-          const tenantId = localStorage.getItem("TenantId");
-          const userId = extendUser?.[0]?.UserId?.objectId;
-          SaveFileSize(size, fileRes?.url, tenantId, userId);
-          return fileRes?.url;
-        }
+      );
+      
+      // Response contains {url, fileKey}
+      if (response?.url) {
+        // Get secure URL if needed
+        const fileRes = await getSecureUrl(response.url);
+        const finalUrl = fileRes?.url || response.url;
+        
+        setImage(finalUrl);
+        setpercentage(0);
+        const tenantId = localStorage.getItem("TenantId");
+        const userId = extendUser?.[0]?.objectId || extendUser?.[0]?.UserId?.objectId;
+        SaveFileSize(size, finalUrl, tenantId, userId);
+        return finalUrl;
       }
     } catch (error) {
       console.error("Error uploading file:", error);
+      setpercentage(0);
+      throw error;
     }
   };
   if (

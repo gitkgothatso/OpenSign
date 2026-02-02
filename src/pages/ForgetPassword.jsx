@@ -47,8 +47,7 @@ function ForgotPassword() {
       if (state.email) {
         const username = state.email;
         try {
-          // TODO: Implement password reset endpoint in backend
-          // For now, calling auth service (may need new endpoint)
+          // Password reset endpoint is implemented in backend
           await authService.resetPassword?.(username);
           setToast({ type: "success", message: t("reset-password-alert-1") });
         } catch (err) {

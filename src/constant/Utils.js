@@ -216,7 +216,43 @@ export const getDrive = async (documentId, skip = 0, limit = 50) => {
     if (response?.error) {
       return response;
     } else if (response?.content) {
-      return response.content;
+      // Transform backend response (camelCase) to Parse format (PascalCase) for compatibility
+      return response.content.map(doc => ({
+        objectId: doc.objectId,
+        Name: doc.name,
+        Description: doc.description || '',
+        Note: doc.note || '',
+        URL: doc.url,
+        SignedUrl: doc.signedUrl,
+        Placeholders: doc.placeholders || [],
+        Signers: doc.signers || [],
+        IsCompleted: doc.isCompleted || false,
+        IsDeclined: doc.isDeclined || false,
+        CompletedOn: doc.completedOn,
+        ExpiryDate: doc.expiryDate,
+        SendinOrder: doc.sendInOrder || false,
+        AutomaticReminders: doc.autoReminder || false,
+        RemindOnceInEvery: doc.remindOnceInEvery,
+        IsEnableOTP: doc.isEnableOTP || false,
+        AuditTrail: doc.auditTrail || [],
+        TimeToCompleteDays: doc.timeToCompleteDays,
+        Type: doc.type || 'Document',
+        IsSignyourself: doc.type === 'self-sign', // Set IsSignyourself based on type
+        Size: doc.size,
+        createdAt: doc.createdAt,
+        updatedAt: doc.updatedAt,
+        // Map createdBy to ExtUserPtr for compatibility
+        ExtUserPtr: doc.createdBy ? {
+          objectId: doc.createdBy,
+          className: 'contracts_Users'
+        } : null,
+        // Map folderId to Folder pointer
+        Folder: doc.folderId ? {
+          __type: 'Pointer',
+          className: 'contracts_Folder',
+          objectId: doc.folderId
+        } : null
+      }));
     } else {
       return [];
     }
@@ -2452,6 +2488,8 @@ export const contractDocument = async (documentId, include) => {
         Size: document.size,
         createdAt: document.createdAt,
         updatedAt: document.updatedAt,
+        // Check if document is a "self-sign" type
+        IsSignyourself: document.type === 'self-sign',
         // Map createdBy to ExtUserPtr for compatibility
         ExtUserPtr: document.createdBy ? {
           objectId: document.createdBy,
@@ -2599,28 +2637,33 @@ export const getAppLogo = async () => {
   let logo = appInfo.applogo;
   let userStatus = "exist"; // Default to "exist" for safety
 
+  // Create a separate axios instance without auth interceptor for public endpoints
+  const axios = (await import('axios')).default;
+  const publicClient = axios.create({
+    baseURL: import.meta.env.VITE_API_URL || 'http://localhost:8080/api/v1',
+    headers: {
+      'Content-Type': 'application/json'
+    }
+  });
+
   // Try to get tenant logo (optional - tenant may not exist yet)
   try {
-    const tenantResponse = await apiClient.get(`/tenants/domain/${encodeURIComponent(domain)}`);
+    const tenantResponse = await publicClient.get(`/tenants/domain/${encodeURIComponent(domain)}`);
     const tenant = tenantResponse?.data;
     if (tenant?.logo) {
       logo = tenant.logo;
     }
   } catch (err) {
-    // Tenant not found is OK - we'll check admin status separately
-    console.log("Tenant not found for domain:", domain);
+    // Tenant not found is OK - silently ignore (404 is expected if tenant doesn't exist)
+    // Only log if it's not a 404 (unexpected error)
+    if (err?.response?.status && err.response.status !== 404) {
+      console.warn("Error fetching tenant for domain:", domain, err?.response?.status, err?.message);
+    }
+    // Silently continue with default logo if tenant doesn't exist
   }
 
   // Check if admin user exists (this determines if we show signup screen)
   try {
-    // Create a separate axios instance without auth interceptor for this public endpoint
-    const axios = (await import('axios')).default;
-    const publicClient = axios.create({
-      baseURL: import.meta.env.VITE_API_URL || 'http://localhost:8080/api/v1',
-      headers: {
-        'Content-Type': 'application/json'
-      }
-    });
     const checkAdminResponse = await publicClient.get(`/auth/check-admin`);
     userStatus = checkAdminResponse?.data?.user || "exist";
   } catch (err) {
@@ -2644,8 +2687,79 @@ export const getAppLogo = async () => {
 };
 export const getTenantDetails = async (objectId, contactId) => {
   try {
-    // objectId is the tenantId in the new API
-    const tenantDetails = await tenantService.getTenantById(objectId);
+    // Extract tenant ID from various sources
+    let tenantId = null;
+    
+    // 1. Try from localStorage first (set during login)
+    tenantId = localStorage.getItem("TenantId");
+    
+    // 2. If not in localStorage and objectId is provided, try to get from user object
+    if (!tenantId && objectId) {
+      try {
+        // If objectId looks like a user ID, fetch user to get tenant ID
+        const user = await userService.getUserById(objectId);
+        if (user) {
+          // Extract tenant ID from user object (handles multiple formats)
+          if (user?.TenantId) {
+            tenantId = typeof user.TenantId === 'string' 
+              ? user.TenantId 
+              : user.TenantId?.objectId || user.TenantId?.id || null;
+          } else if (user?.tenantId) {
+            tenantId = typeof user.tenantId === 'string' 
+              ? user.tenantId 
+              : user.tenantId?.objectId || user.tenantId?.id || null;
+          }
+        }
+      } catch (err) {
+        // If getUserById fails, try getCurrentUser
+        try {
+          const currentUser = await userService.getCurrentUser();
+          if (currentUser) {
+            if (currentUser?.TenantId) {
+              tenantId = typeof currentUser.TenantId === 'string' 
+                ? currentUser.TenantId 
+                : currentUser.TenantId?.objectId || currentUser.TenantId?.id || null;
+            } else if (currentUser?.tenantId) {
+              tenantId = typeof currentUser.tenantId === 'string' 
+                ? currentUser.tenantId 
+                : currentUser.tenantId?.objectId || currentUser.tenantId?.id || null;
+            }
+          }
+        } catch (e) {
+          console.log("Could not get current user for tenant ID", e);
+        }
+      }
+    }
+    
+    // 3. If still no tenant ID, try getCurrentUser
+    if (!tenantId) {
+      try {
+        const currentUser = await userService.getCurrentUser();
+        if (currentUser) {
+          if (currentUser?.TenantId) {
+            tenantId = typeof currentUser.TenantId === 'string' 
+              ? currentUser.TenantId 
+              : currentUser.TenantId?.objectId || currentUser.TenantId?.id || null;
+          } else if (currentUser?.tenantId) {
+            tenantId = typeof currentUser.tenantId === 'string' 
+              ? currentUser.tenantId 
+              : currentUser.tenantId?.objectId || currentUser.tenantId?.id || null;
+          }
+        }
+      } catch (e) {
+        console.log("Could not get current user for tenant ID", e);
+      }
+    }
+    
+    // If no tenant ID found, return empty object instead of error
+    // This allows "Sign Yourself" documents to proceed without tenant details
+    if (!tenantId) {
+      console.warn("Tenant ID not found. User may not be associated with a tenant. Proceeding without tenant details.");
+      return {}; // Return empty object instead of error string
+    }
+    
+    // Fetch tenant details using the tenant ID
+    const tenantDetails = await tenantService.getTenantById(tenantId);
     
     if (tenantDetails) {
       const updateRes = JSON.parse(JSON.stringify(tenantDetails));
@@ -2738,8 +2852,9 @@ export const fetchUrl = async (url, fileName) => {
 export const getSignedUrl = async (pdfUrl, docId, templateId) => {
   //use fileService instead of Parse endpoint
   // Note: Backend may need docId and templateId params in future
-  const url = await fileService.getSecureUrl(pdfUrl);
-  return url;
+  const response = await fileService.getSecureUrl(pdfUrl);
+  // Extract the URL string from the response object
+  return response?.url || response || pdfUrl;
 };
 //download base64 type pdf
 export const fetchBase64 = async (pdfBase64, pdfName) => {
@@ -2850,15 +2965,45 @@ export const handleDownloadCertificate = async (
   const appName = "OpenSign™";
   if (pdfDetails?.length > 0 && pdfDetails[0]?.CertificateUrl) {
     try {
-      await fetch(pdfDetails[0] && pdfDetails[0]?.CertificateUrl);
-      const certificateUrl = pdfDetails[0] && pdfDetails[0]?.CertificateUrl;
+      // Get secure URL for certificate
+      const secureUrlResponse = await fileService.getSecureUrl(pdfDetails[0]?.CertificateUrl);
+      const certificateUrl = secureUrlResponse?.url || secureUrlResponse || pdfDetails[0]?.CertificateUrl;
+      
       if (isZip) {
         return certificateUrl;
       } else {
-        saveAs(certificateUrl, `Certificate_signed_by_${appName}.pdf`);
+        // Fetch and download the certificate
+        const response = await fetch(certificateUrl);
+        if (!response.ok) {
+          throw new Error(`Failed to fetch certificate: ${response.statusText} (${response.status})`);
+        }
+        
+        // Check content type to ensure it's a PDF
+        const contentType = response.headers.get('content-type') || '';
+        const blob = await response.blob();
+        
+        // Validate that we got a PDF (check content type or blob size)
+        if (!contentType.includes('pdf') && !contentType.includes('application/octet-stream')) {
+          // If it's not a PDF, check if it's an error response (usually JSON)
+          if (contentType.includes('json') || blob.size < 1000) {
+            const text = await blob.text();
+            try {
+              const errorData = JSON.parse(text);
+              throw new Error(errorData.error || errorData.message || 'Certificate file not found or invalid');
+            } catch (e) {
+              throw new Error('Certificate file is not a valid PDF');
+            }
+          }
+        }
+        
+        saveAs(blob, `Certificate_signed_by_${appName}.pdf`);
       }
     } catch (err) {
       console.log("err in download in certificate", err);
+      if (!isZip) {
+        alert(err.message || i18n.t("something-went-wrong-mssg"));
+      }
+      throw err;
     }
   } else {
     setIsDownloading("certificate");
@@ -2867,36 +3012,88 @@ export const handleDownloadCertificate = async (
       const doc = await documentService.getDocument(docId);
       if (doc) {
         if (doc?.CertificateUrl) {
-          await fetch(doc?.CertificateUrl);
-          const certificateUrl = doc?.CertificateUrl;
+          // Get secure URL for certificate
+          const secureUrlResponse = await fileService.getSecureUrl(doc?.CertificateUrl);
+          const certificateUrl = secureUrlResponse?.url || secureUrlResponse || doc?.CertificateUrl;
+          
           if (isZip) {
             setIsDownloading("");
             return certificateUrl;
           } else {
-            saveAs(certificateUrl, `Certificate_signed_by_${appName}.pdf`);
+            // Fetch and download the certificate
+            const response = await fetch(certificateUrl);
+            if (!response.ok) {
+              throw new Error(`Failed to fetch certificate: ${response.statusText} (${response.status})`);
+            }
+            
+            // Check content type to ensure it's a PDF
+            const contentType = response.headers.get('content-type') || '';
+            const blob = await response.blob();
+            
+            // Validate that we got a PDF
+            if (!contentType.includes('pdf') && !contentType.includes('application/octet-stream')) {
+              if (contentType.includes('json') || blob.size < 1000) {
+                const text = await blob.text();
+                try {
+                  const errorData = JSON.parse(text);
+                  throw new Error(errorData.error || errorData.message || 'Certificate file not found or invalid');
+                } catch (e) {
+                  throw new Error('Certificate file is not a valid PDF');
+                }
+              }
+            }
+            
+            saveAs(blob, `Certificate_signed_by_${appName}.pdf`);
             setIsDownloading("");
           }
         } else {
-          const generateRes = await documentService.generateCertificate(docId);
-          if (generateRes?.CertificateUrl) {
-            try {
-              const certificateUrl = generateRes.CertificateUrl;
-              const fetchCertificate = await fetch(certificateUrl);
+          // Try to generate certificate if it doesn't exist
+          try {
+            const generateRes = await documentService.generateCertificate(docId);
+            if (generateRes?.CertificateUrl) {
+              // Get secure URL for generated certificate
+              const secureUrlResponse = await fileService.getSecureUrl(generateRes.CertificateUrl);
+              const certificateUrl = secureUrlResponse?.url || secureUrlResponse || generateRes.CertificateUrl;
+              
               if (isZip) {
                 setIsDownloading("");
                 return certificateUrl;
               } else {
-                // Convert the response into a Blob
+                // Fetch and download the certificate
+                const fetchCertificate = await fetch(certificateUrl);
+                if (!fetchCertificate.ok) {
+                  throw new Error(`Failed to fetch certificate: ${fetchCertificate.statusText} (${fetchCertificate.status})`);
+                }
+                
+                // Check content type
+                const contentType = fetchCertificate.headers.get('content-type') || '';
                 const certificateBlob = await fetchCertificate.blob();
+                
+                // Validate PDF
+                if (!contentType.includes('pdf') && !contentType.includes('application/octet-stream')) {
+                  if (contentType.includes('json') || certificateBlob.size < 1000) {
+                    const text = await certificateBlob.text();
+                    try {
+                      const errorData = JSON.parse(text);
+                      throw new Error(errorData.error || errorData.message || 'Certificate file not found or invalid');
+                    } catch (e) {
+                      throw new Error('Certificate file is not a valid PDF');
+                    }
+                  }
+                }
+                
                 setIsDownloading("");
                 saveAs(certificateBlob, `Certificate_signed_by_${appName}.pdf`);
               }
-            } catch (err) {
-              console.log("err in download in certificate", err);
-              setIsDownloading("certificate_err");
+            } else {
+              throw new Error('Certificate generation failed: No certificate URL returned');
             }
-          } else {
+          } catch (err) {
+            console.log("err in download in certificate", err);
             setIsDownloading("certificate_err");
+            if (!isZip) {
+              alert(err.message || i18n.t("something-went-wrong-mssg"));
+            }
           }
         }
       }
@@ -3132,17 +3329,38 @@ export const convertBase64ToFile = async (pdfName, pdfBase64, imgType) => {
     fileNameWithUnderscore(pdfName) + (imgType ? `.${mime}` : ".pdf");
   try {
     fileName = imgType ? pdfName : fileName;
-    // TODO: Use documentService file upload instead
-    // const pdfFile = new Parse.File(fileName, { base64: base64Str });
-    // Save the Parse File if needed
-    const pdfData = await pdfFile.save();
-    const pdfUrl = pdfData.url();
-    const fileRes = await getSecureUrl(pdfUrl);
-    if (fileRes?.url) {
-      return fileRes.url;
+    
+    // Convert base64 to Blob
+    const base64Data = base64Str.includes(',') 
+      ? base64Str.split(',')[1] 
+      : base64Str;
+    const byteCharacters = atob(base64Data);
+    const byteNumbers = new Array(byteCharacters.length);
+    for (let i = 0; i < byteCharacters.length; i++) {
+      byteNumbers[i] = byteCharacters.charCodeAt(i);
     }
+    const byteArray = new Uint8Array(byteNumbers);
+    const blob = new Blob([byteArray], { 
+      type: imgType || 'application/pdf' 
+    });
+    
+    // Upload using fileService
+    const uploadResult = await fileService.uploadFile(
+      blob,
+      fileName,
+      imgType || 'application/pdf'
+    );
+    
+    if (uploadResult?.url) {
+      // Get secure URL if needed
+      const fileRes = await getSecureUrl(uploadResult.url);
+      return fileRes?.url || uploadResult.url;
+    }
+    
+    return null;
   } catch (e) {
     console.log("error in convertbase64tofile", e);
+    return null;
   }
 };
 export const onClickZoomIn = (scale, zoomPercent, setScale, setZoomPercent) => {

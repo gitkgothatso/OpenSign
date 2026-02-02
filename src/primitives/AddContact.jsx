@@ -1,11 +1,10 @@
 import { useState, useEffect } from "react";
 import Loader from "./Loader";
 import { useTranslation } from "react-i18next";
-import axios from "axios";
-import { getTenantDetails } from "../constant/Utils";
 import { emailRegex } from "../constant/const";
 import { useDispatch } from "react-redux";
 import { sessionStatus } from "../redux/reducers/userReducer";
+import contactService from "../services/contactService";
 
 const AddContact = (props) => {
   const { t } = useTranslation();
@@ -40,22 +39,20 @@ const AddContact = (props) => {
 
   const checkUserExist = async () => {
     try {
-      const baseURL = localStorage.getItem("baseUrl");
-      const url = `${baseURL}functions/isuserincontactbook`;
-      const token =
-            { "X-Parse-Session-Token": localStorage.getItem("accesstoken") };
-      const headers = {
-        "Content-Type": "application/json",
-        "X-Parse-Application-Id": localStorage.getItem("parseAppId"),
-        ...token
-      };
-      const axiosRes = await axios.post(url, {}, { headers });
-      const contactRes = axiosRes?.data?.result || {};
-      if (!contactRes?.objectId) {
+      const contact = await contactService.checkUserInContactBook();
+      // If contact doesn't exist (null), show the "add yourself" checkbox
+      // This is expected behavior - most users won't have themselves in their contact book initially
+      if (!contact || !contact.id) {
         setIsUserExist(true);
       }
     } catch (err) {
-      console.log("err ", err);
+      // Silently handle errors - 404 is expected, other errors shouldn't break the UI
+      // Always allow adding yourself as a fallback
+      if (err?.isExpected404 !== true && err?.response?.status !== 404) {
+        // Only log unexpected errors (not 404s)
+        console.warn("Unexpected error checking user in contact book:", err?.response?.status || err?.message);
+      }
+      setIsUserExist(true);
     }
   };
   // Define a function to handle form submission
@@ -66,54 +63,53 @@ const AddContact = (props) => {
       alert(t("valid-email-alert"));
     } else {
       setIsLoader(true);
-      const user = JSON.parse(
-        localStorage.getItem(
-          `Parse/${localStorage.getItem("parseAppId")}/currentUser`
-        )
-      );
-      const userId = user?.objectId || "";
-      const tenantDetails = await getTenantDetails(
-        userId,
-      );
-      const tenantId = tenantDetails?.objectId || "";
-      if (tenantId) {
-        try {
-          const baseURL = localStorage.getItem("baseUrl");
-          const url = `${baseURL}functions/savecontact`;
-          const token =
-                {
-                  "X-Parse-Session-Token": localStorage.getItem("accesstoken")
-                };
-          const data = { name, email, phone, tenantId, jobTitle, company };
-          const headers = {
-            "Content-Type": "application/json",
-            "X-Parse-Application-Id": localStorage.getItem("parseAppId"),
-            ...token
-          };
-          const axiosRes = await axios.post(url, data, { headers });
-          const contactRes = axiosRes?.data?.result || {};
-          if (contactRes?.objectId) {
-            props.details(contactRes, props?.newContactId);
-            if (props.closePopup) {
-              props.closePopup();
-              setIsLoader(false);
-              // Reset the form fields
-              handleReset();
-            }
+      try {
+        // Create contact using REST API
+        // Note: Backend will automatically associate tenant and user from authenticated JWT token
+        // No need to fetch tenantId - backend handles it from authentication context
+        const contactRes = await contactService.createContact({
+          name,
+          email,
+          phone,
+          company,
+          jobTitle
+        });
+
+        // Map response to expected format (objectId -> id)
+        const mappedContact = {
+          ...contactRes,
+          objectId: contactRes.id || contactRes.objectId
+        };
+
+        if (mappedContact.objectId || mappedContact.id) {
+          props.details(mappedContact, props?.newContactId);
+          if (props.closePopup) {
+            props.closePopup();
+            setIsLoader(false);
+            // Reset the form fields
+            handleReset();
           }
-        } catch (err) {
-          console.log("Err", err);
+        } else {
           setIsLoader(false);
-          if (err?.response?.data?.error?.includes("already exists")) {
-            alert(t("add-signer-alert"));
+          alert(t("something-went-wrong-mssg"));
+        }
+      } catch (err) {
+        console.log("Err creating contact", err);
+        setIsLoader(false);
+        
+        // Check if it's a 401 (unauthorized) - only then should we logout
+        if (err?.response?.status === 401) {
+          dispatch(sessionStatus(false));
+          alert(t("session-expired-mssg") || t("something-went-wrong-mssg"));
+        } else {
+          // For other errors, show appropriate message without logging out
+          const errorMessage = err?.response?.data?.error || err?.response?.data?.message || "";
+          if (errorMessage.includes("already exists") || errorMessage.includes("duplicate") || errorMessage.includes("email")) {
+            alert(t("add-signer-alert") || t("contact-already-exists") || t("something-went-wrong-mssg"));
           } else {
             alert(t("something-went-wrong-mssg"));
           }
         }
-      } else {
-        setIsLoader(false);
-        dispatch(sessionStatus(false));
-        alert(t("something-went-wrong-mssg"));
       }
     }
   };

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { getUserListByOrg, resetUserPassword } from "../services/userService";
+import userService from "../services/userService";
 import Alert from "../primitives/Alert";
 import Loader from "../primitives/Loader";
 import { useLocation } from "react-router";
@@ -14,6 +15,7 @@ import DeleteUserModal from "../primitives/DeleteUserModal";
 import axios from "axios";
 import PasswordResetModal from "../primitives/PasswordResetModal";
 import { usersActions } from "../json/ReportJson";
+import apiClient from "../config/api";
 
 const heading = ["Sr.No", "Name", "Email", "Phone", "Role", "Team", "Active"];
 const UserList = () => {
@@ -118,7 +120,34 @@ const UserList = () => {
         setIsAdmin(admin);
       }
 
-      const tenantIdStr = extUser.tenantId.objectId; 
+      // Get tenantId - handle multiple formats
+      let tenantIdStr = "";
+      
+      // Try from localStorage first (set during login)
+      tenantIdStr = localStorage.getItem("TenantId") || "";
+      
+      // If not in localStorage, try from extUser object
+      if (!tenantIdStr && extUser) {
+        // Try capitalized TenantId (object with objectId)
+        if (extUser?.TenantId) {
+          tenantIdStr = typeof extUser.TenantId === 'string' 
+            ? extUser.TenantId 
+            : extUser.TenantId?.objectId || extUser.TenantId?.id || "";
+        }
+        // Try lowercase tenantId (object with objectId)
+        else if (extUser?.tenantId) {
+          tenantIdStr = typeof extUser.tenantId === 'string' 
+            ? extUser.tenantId 
+            : extUser.tenantId?.objectId || extUser.tenantId?.id || "";
+        }
+      }
+
+      if (!tenantIdStr) {
+        console.error("TenantId not found");
+        showAlert("danger", t("something-went-wrong-mssg"));
+        setIsLoader(false);
+        return;
+      }
 
       const res = await getUserListByOrg(tenantIdStr);
       const _userRes = JSON.parse(JSON.stringify(res));
@@ -179,15 +208,30 @@ const UserList = () => {
       newArray[index] = { ...newArray[index], IsDisabled: !IsDisabled };
       setUserList(newArray);
       try {
-        // Update user disabled status via userService
-        await userService.updateProfile({ id: user.objectId, IsDisabled: !IsDisabled });
+        // Update user disabled status via Parse compatibility endpoint
+        // Note: Backend should add admin permission check for this endpoint in future
+        const baseURL = import.meta.env.VITE_API_URL || 'http://localhost:8080';
+        const parseUrl = `${baseURL}/api/app/classes/contracts_Users/${user.objectId}`;
+        
+        await axios.put(parseUrl, { 
+          IsDisabled: !IsDisabled 
+        }, {
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${localStorage.getItem('jwtToken')}`
+          }
+        });
+        
         showAlert(
           !IsDisabled === true ? "danger" : "success",
           !IsDisabled === true ? t("user-deactivated") : t("user-activated")
         );
       } catch (err) {
         showAlert("danger", t("something-went-wrong-mssg"));
-        console.log("err in disable team", err);
+        console.log("err in disable user", err);
+        // Revert the UI change on error
+        newArray[index] = { ...newArray[index], IsDisabled: IsDisabled };
+        setUserList(newArray);
       } finally {
         setIsActLoader({});
       }

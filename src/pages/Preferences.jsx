@@ -11,6 +11,7 @@ import {
   usertimezone
 } from "../constant/Utils";
 import { userService } from "../services/userService";
+import authService from "../services/authService";
 import { Tooltip as ReactTooltip } from "react-tooltip";
 import TimezoneSelector from "../components/preferences/TimezoneSelector";
 import DateFormatSelector from "../components/preferences/DateFormatSelector";
@@ -61,67 +62,67 @@ const Preferences = () => {
     ];
     setTab(arr);
     try {
-      const user = JSON.parse(
-        localStorage.getItem(
-          `Parse/${localStorage.getItem("parseAppId")}/currentUser`
-        )
-      );
-      const tenantDetails = await getTenantDetails(user?.objectId);
+      // Get current user ID from authService
+      const currentUserAuth = authService.getCurrentUser();
+      if (!currentUserAuth || !currentUserAuth.id) {
+        setErrMsg(t("something-went-wrong-mssg"));
+        setIsTopLoader(false);
+        return;
+      }
+
+      // Get full user details with preferences using getUserById (returns UserResponse with all preference fields)
+      const currentUser = await userService.getUserById(currentUserAuth.id);
+      if (!currentUser) {
+        setErrMsg(t("something-went-wrong-mssg"));
+        setIsTopLoader(false);
+        return;
+      }
+
+      // Get tenant details using user objectId
+      const tenantDetails = await getTenantDetails(currentUser.objectId || currentUser.userId);
       setTenantInfo(tenantDetails);
       const signatureType = tenantDetails?.SignatureType || [];
       const tenantSignTypes = signatureType?.filter((x) => x.enabled === true);
-      const extUser = await axios.post(
-        `${localStorage.getItem("baseUrl")}functions/getUserDetails`,
-        {},
-        {
-          headers: {
-            "Content-Type": "application/json",
-            "X-Parse-Application-Id": localStorage.getItem("parseAppId"),
-            "X-Parse-Session-Token": localStorage.getItem("accesstoken")
-          }
-        }
+      
+      // Extract preferences from user response
+      const _getUser = currentUser;
+      setIsNotifyOnSignatures(
+        _getUser?.NotifyOnSignatures !== undefined
+          ? _getUser?.NotifyOnSignatures
+          : true
       );
-      const getUser = extUser.data?.result;
-      if (getUser) {
-        const _getUser = JSON.parse(JSON.stringify(getUser));
-        setIsNotifyOnSignatures(
-          _getUser?.NotifyOnSignatures !== undefined
-            ? _getUser?.NotifyOnSignatures
-            : true
+      setTimezone(_getUser?.Timezone || _getUser?.timezone || usertimezone);
+      if (tenantSignTypes?.length > 0) {
+        const signatureType = _getUser?.SignatureType || signatureTypes;
+        const updatedSignatureType = await handleSignatureType(
+          tenantSignTypes,
+          signatureType
         );
-        setTimezone(_getUser?.Timezone || usertimezone);
-        if (tenantSignTypes?.length > 0) {
-          const signatureType = _getUser?.SignatureType || signatureTypes;
-          const updatedSignatureType = await handleSignatureType(
-            tenantSignTypes,
-            signatureType
-          );
-          setSignatureType(updatedSignatureType);
-        } else {
-          const SignatureType = _getUser?.SignatureType || signatureTypes;
-          setSignatureType(SignatureType);
-        }
-        setSendinOrder(
-          _getUser?.SendinOrder !== undefined ? _getUser?.SendinOrder : true
-        );
-        setIsTourEnabled(
-          _getUser?.IsTourEnabled !== undefined ? _getUser?.IsTourEnabled : true
-        );
-        setDateFormat(
-          _getUser?.DateFormat !== undefined
-            ? _getUser?.DateFormat
-            : "MM/DD/YYYY"
-        );
-        setIs12HourTime(
-          _getUser?.Is12HourTime !== undefined ? _getUser?.Is12HourTime : false
-        );
-        setIsLTVEnabled(
-          _getUser?.IsLTVEnabled !== undefined ? _getUser?.IsLTVEnabled : false
-        );
-        const downloadFilenameFormat =
-          _getUser?.DownloadFilenameFormat || "DOCNAME";
-        setFileNameFormat(downloadFilenameFormat);
+        setSignatureType(updatedSignatureType);
+      } else {
+        const SignatureType = _getUser?.SignatureType || signatureTypes;
+        setSignatureType(SignatureType);
       }
+      setSendinOrder(
+        _getUser?.SendinOrder !== undefined ? _getUser?.SendinOrder : true
+      );
+      setIsTourEnabled(
+        _getUser?.IsTourEnabled !== undefined ? _getUser?.IsTourEnabled : true
+      );
+      setDateFormat(
+        _getUser?.DateFormat !== undefined
+          ? _getUser?.DateFormat
+          : "MM/DD/YYYY"
+      );
+      setIs12HourTime(
+        _getUser?.Is12HourTime !== undefined ? _getUser?.Is12HourTime : false
+      );
+      setIsLTVEnabled(
+        _getUser?.IsLTVEnabled !== undefined ? _getUser?.IsLTVEnabled : false
+      );
+      const downloadFilenameFormat =
+        _getUser?.DownloadFilenameFormat || "DOCNAME";
+      setFileNameFormat(downloadFilenameFormat);
     } catch (err) {
       console.error("Error while getting user details: ", err);
       setErrMsg(t("something-went-wrong-mssg"));

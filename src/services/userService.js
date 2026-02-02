@@ -26,13 +26,22 @@ export const userService = {
   /**
    * Get user by email
    * @param {string} email - User email
-   * @returns {Promise} User profile
+   * @returns {Promise<UserProfile|null>} User profile or null if not found
    */
   getUserByEmail: async (email) => {
-    const response = await apiClient.get('/users/by-email', {
-      params: { email }
-    });
-    return response.data;
+    try {
+      const response = await apiClient.get('/users/by-email', {
+        params: { email }
+      });
+      return response.data;
+    } catch (error) {
+      // 404 means user not found - return null instead of throwing
+      if (error.response?.status === 404) {
+        return null;
+      }
+      // Re-throw other errors
+      throw error;
+    }
   },
 
   /**
@@ -97,6 +106,7 @@ export const userService = {
    */
   updateTourStatus: async (userId, tourStatus) => {
     const response = await apiClient.put(`/users/profile/${userId}/tour-status`, {
+      tourStatus: tourStatus
     });
     return response.data;
   }

@@ -35,21 +35,21 @@ const EditContactForm = (props) => {
     e.preventDefault();
     e.stopPropagation();
     try {
-      // Session token handled by apiClient interceptor
-      if (localStorage.getItem("TenantId") && sessionToken) {
-        if (props.handleEditContact) {
-          try {
-            setIsLoader(true);
-            const params = {
-              contactId: props.contact.objectId,
-              name: formData.Name,
-              email: formData.Email,
-              phone: formData?.Phone,
-              company: formData?.Company,
-              jobTitle: formData?.JobTitle,
-              tenantId: localStorage.getItem("TenantId")
-            };
-            const res = await contactService.editContact(params);
+      if (props.handleEditContact) {
+        try {
+          setIsLoader(true);
+          // Backend expects: PUT /contacts/{id} with UpdateContactRequest body
+          const params = {
+            id: props.contact.objectId, // ID goes in URL path, not body
+            name: formData.Name,
+            email: formData.Email,
+            phone: formData?.Phone || '',
+            company: formData?.Company || '',
+            jobTitle: formData?.JobTitle || '',
+            note: formData?.Note || '',
+            tags: formData?.Tags || []
+          };
+          const res = await contactService.editContact(params);
             const updateContact = {
               ...res,
               Name: formData.Name,
@@ -61,7 +61,8 @@ const EditContactForm = (props) => {
             props.handleEditContact(updateContact);
           } catch (err) {
             console.log("err in edit contact ", err);
-            if (err.code === 137) {
+            const errorMessage = err?.response?.data?.error || err?.response?.data?.message || err?.message || '';
+            if (errorMessage.includes("already exists") || errorMessage.includes("duplicate") || err?.response?.status === 409) {
               alert(t("contact-already-exists"));
             } else {
               alert(t("something-went-wrong-mssg"));
@@ -71,12 +72,10 @@ const EditContactForm = (props) => {
             props.handleClose && props.handleClose();
           }
         }
-      } else {
-        dispatch(sessionStatus(false));
-      }
     } catch (err) {
-      console.error("invalid session or missing tenantId ", err);
-      dispatch(sessionStatus(false));
+      console.error("Error editing contact", err);
+      setIsLoader(false);
+      alert(t("something-went-wrong-mssg"));
     }
   };
   return (

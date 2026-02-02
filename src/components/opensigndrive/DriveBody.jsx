@@ -381,7 +381,10 @@ function DriveBody(props) {
     ) : listType === "list" && data.Type === "Folder" ? (
       <div className="relative w-[100px] h-[100px] mx-2 my-3">
         <ContextMenu.Root>
-          <ContextMenu.Trigger className="flex flex-col justify-center items-center select-none-cls">
+          <ContextMenu.Trigger 
+            className="flex flex-col justify-center items-center select-none-cls"
+            style={{ touchAction: 'manipulation' }}
+          >
             {/* folder */}
             <div
               data-tut={props.dataTutSeventh}
@@ -452,7 +455,7 @@ function DriveBody(props) {
         closeDelay={100}
       >
         <HoverCard.Trigger asChild>
-          <div>
+          <div style={{ touchAction: 'manipulation' }}>
             <ContextMenu.Root>
               <div className="relative w-[100px] h-[100px] mx-2 my-3">
                 <ContextMenu.Trigger
@@ -468,6 +471,7 @@ function DriveBody(props) {
                       }
                     }}
                     className="cursor-pointer"
+                    style={{ touchAction: 'manipulation' }}
                   >
                     <svg
                       xmlns="http://www.w3.org/2000/svg"

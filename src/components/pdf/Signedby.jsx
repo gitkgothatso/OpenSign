@@ -6,8 +6,11 @@ function Signedby(props) {
   const getFirstLetter = (pdfData) => {
     const name = props.isSelfSign
       ? (pdfData?.Signers && pdfData?.Signers[0]?.Name) || "User"
-      : pdfData.ExtUserPtr?.Name;
-    const firstLetter = name.charAt(0);
+      : pdfData?.ExtUserPtr?.Name || "User";
+    if (!name || typeof name !== 'string') {
+      return "U";
+    }
+    const firstLetter = name.charAt(0).toUpperCase();
     return firstLetter;
   };
   return (
@@ -28,14 +31,14 @@ function Signedby(props) {
                 ? (props.pdfDetails?.Signers &&
                     props.pdfDetails?.Signers[0]?.Name) ||
                   "User"
-                : props.pdfDetails.ExtUserPtr.Name || "User"}
+                : props.pdfDetails?.ExtUserPtr?.Name || "User"}
             </span>
             <span className="text-[10px] font-medium text-[#424242] w-[100px] whitespace-nowrap overflow-hidden text-ellipsis">
               {props.isSelfSign
                 ? (props.pdfDetails?.Signers &&
                     props.pdfDetails?.Signers[0]?.Email) ||
                   ""
-                : props.pdfDetails.ExtUserPtr.Email || ""}
+                : props.pdfDetails?.ExtUserPtr?.Email || ""}
             </span>
           </div>
         </div>

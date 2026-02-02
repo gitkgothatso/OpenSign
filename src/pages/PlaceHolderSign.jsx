@@ -2,6 +2,8 @@ import { useState, useRef, useEffect } from "react";
 import axios from "axios";
 import authService from "../services/authService";
 import documentService from "../services/documentService";
+import emailService from "../services/emailService";
+import userService from "../services/userService";
 import "../styles/signature.css";
 import { PDFDocument } from "pdf-lib";
 import RenderAllPdfPage from "../components/pdf/RenderAllPdfPage";
@@ -163,10 +165,8 @@ function PlaceHolderSign() {
   const [docTitle, setDocTitle] = useState("");
   const [isEditDoc, setIsEditDoc] = useState(false);
   const isMobile = window.innerWidth < 767;
-  const currentUser = localStorage.getItem(
-    `Parse/${localStorage.getItem("parseAppId")}/currentUser`
-  );
-  const user = currentUser && JSON.parse(currentUser);
+  // Get current user from JWT auth instead of Parse localStorage
+  const user = authService.getCurrentUser();
   const documentId = docId;
   useEffect(() => {
     dispatch(resetWidgetState([]));
@@ -178,11 +178,7 @@ function PlaceHolderSign() {
 
   //function to fetch tenant Details
   const fetchTenantDetails = async () => {
-    const user = JSON.parse(
-      localStorage.getItem(
-        `Parse/${localStorage.getItem("parseAppId")}/currentUser`
-      )
-    );
+    const user = authService.getCurrentUser();
     if (user) {
       try {
         const defaultRequestBody = defaultMailBody;
@@ -1074,26 +1070,16 @@ function PlaceHolderSign() {
       updateExpiryDate.setDate(updateExpiryDate.getDate() + addExtraDays);
       try {
         const data = {
-          Name: docTitle || pdfDetails?.[0]?.Name,
-          Placeholders: signerPos,
-          SignedUrl: pdfUrl,
-          URL: pdfUrl,
-          Signers: signers,
-          SentToOthers: true,
-          SignatureType: pdfDetails?.[0]?.SignatureType,
-          ExpiryDate: { iso: updateExpiryDate, __type: "Date" }
+          name: docTitle || pdfDetails?.[0]?.Name,
+          placeholders: signerPos,
+          signedUrl: pdfUrl,
+          url: pdfUrl,
+          signers: signers,
+          sentToOthers: true,
+          signatureType: pdfDetails?.[0]?.SignatureType,
+          expiryDate: updateExpiryDate instanceof Date ? updateExpiryDate.toISOString() : updateExpiryDate
         };
-        await axios.put(
-          `${(localStorage.getItem("baseUrl") || "/api/app/")}classes/contracts_Document/${documentId}`,
-          data,
-          {
-            headers: {
-              "Content-Type": "application/json",
-              "X-Parse-Application-Id": localStorage.getItem("parseAppId"),
-              "X-Parse-Session-Token": localStorage.getItem("accesstoken")
-            }
-          }
-        );
+        await documentService.updateDocument(documentId, data);
         setIsMailSend(true);
         setIsLoading({ isLoad: false });
         setIsUiLoading(false);
@@ -1189,12 +1175,6 @@ function PlaceHolderSign() {
 
     for (let i = 0; i < signerMail.length; i++) {
       try {
-        let url = `${(localStorage.getItem("baseUrl") || "/api/app/")}functions/sendmailv3`;
-        const headers = {
-          "Content-Type": "application/json",
-          "X-Parse-Application-Id": localStorage.getItem("parseAppId"),
-          sessionToken: localStorage.getItem("accesstoken")
-        };
         const objectId = signerMail[i].objectId;
         const hostUrl = window.location.origin;
         //encode this url value `${pdfDetails?.[0].objectId}/${signerMail[i].Email}/${objectId}` to base64 using `btoa` function
@@ -1246,7 +1226,7 @@ function PlaceHolderSign() {
           const mailBody = tenantMailTemplate?.body;
           const mailSubject = tenantMailTemplate?.subject;
           const replacedRequestBody = mailBody.replace(/"/g, "'");
-          const htmlReqBody =
+          htmlReqBody =
             "<html><head><meta http-equiv='Content-Type' content='text/html; charset=UTF-8' /></head><body>" +
             replacedRequestBody +
             "</body> </html>";
@@ -1274,67 +1254,67 @@ function PlaceHolderSign() {
           localExpireDate: localExpireDate,
           signingUrl: signPdf
         };
-        let params = {
+        let emailData = {
           extUserId: owner?.objectId,
           recipient: signerMail[i].Email,
           subject: replaceVar?.subject
             ? replaceVar?.subject
             : mailTemplate(mailparam).subject,
           replyto: senderEmail,
-          from:
-            senderEmail,
+          from: senderEmail,
           html: replaceVar?.body
             ? replaceVar?.body
-            : mailTemplate(mailparam).body
+            : mailTemplate(mailparam).body,
+          variables: {
+            document_title: documentName,
+            note: pdfDetails?.[0]?.Note,
+            sender_name: senderName,
+            sender_mail: senderEmail,
+            sender_phone: senderPhone || "",
+            receiver_name: signerMail[i]?.Name || "",
+            receiver_email: signerMail[i].Email,
+            receiver_phone: signerMail[i]?.Phone || "",
+            expiry_date: localExpireDate,
+            company_name: orgName,
+            signing_url: signPdf
+          }
         };
 
-        sendMail = await axios.post(url, params, { headers: headers });
+        sendMail = await emailService.sendCustomEmail(emailData);
       } catch (error) {
         console.log("error", error);
       }
     }
-    if (sendMail?.data?.result?.status === "success") {
+    if (sendMail?.status === "success" || sendMail?.result?.status === "success") {
       setMailStatus("success");
       try {
-        let data;
+        let data = {};
         if (
           requestBody &&
           requestSubject &&
           isCustomize
         ) {
           data = {
-            RequestBody: htmlReqBody,
-            RequestSubject: requestSubject,
-            SendMail: true
+            requestBody: htmlReqBody,
+            requestSubject: requestSubject,
+            sendMail: true
           };
         } else if (
           tenantMailTemplate?.body &&
           tenantMailTemplate?.subject
         ) {
           data = {
-            RequestBody: tenantMailTemplate?.body,
-            RequestSubject: tenantMailTemplate?.subject,
-            SendMail: true
+            requestBody: tenantMailTemplate?.body,
+            requestSubject: tenantMailTemplate?.subject,
+            sendMail: true
           };
         } else {
-          data = { SendMail: true };
+          data = { sendMail: true };
         }
         try {
-          await axios.put(
-            `${localStorage.getItem(
-              "baseUrl"
-            )}classes/contracts_Document/${documentId}`,
-            data,
-            {
-              headers: {
-                "Content-Type": "application/json",
-                "X-Parse-Application-Id": localStorage.getItem("parseAppId"),
-                "X-Parse-Session-Token": localStorage.getItem("accesstoken")
-              }
-            }
-          );
+          await documentService.updateDocument(documentId, data);
         } catch (err) {
-          console.log("axois err ", err);
+          console.log("error updating document", err);
         }
       } catch (e) {
         console.log("error", e);
@@ -1343,7 +1323,7 @@ function PlaceHolderSign() {
       setIsMailSend(true);
       setIsLoading({ isLoad: false });
       setIsUiLoading(false);
-    } else if (sendMail?.data?.result?.status === "quota-reached") {
+    } else if (sendMail?.status === "quota-reached" || sendMail?.result?.status === "quota-reached") {
       setMailStatus("quotareached");
       setIsSend(true);
       setIsMailSend(true);
@@ -1719,22 +1699,10 @@ function PlaceHolderSign() {
         updatedTourStatus = [{ placeholder: true }];
       }
       try {
-        await axios.put(
-          `${localStorage.getItem(
-            "baseUrl"
-          )}classes/contracts_Users/${signerUserId}`,
-          { TourStatus: updatedTourStatus },
-          {
-            headers: {
-              "Content-Type": "application/json",
-              "X-Parse-Application-Id": localStorage.getItem("parseAppId"),
-              sessionToken: localStorage.getItem("accesstoken")
-            }
-          }
-        );
+        await userService.updateTourStatus(signerUserId, updatedTourStatus);
         setCheckTourStatus(true);
       } catch (err) {
-        console.log("axois err ", err);
+        console.log("error updating tour status", err);
       }
     }
   };

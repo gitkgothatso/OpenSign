@@ -59,7 +59,8 @@ const ManageSign = () => {
       try {
         const signRes = await signatureService.getDefaultSignature(User.id);
         if (signRes) {
-          const res = signRes.toJSON();
+          // signRes is already a plain object from REST API, no need for toJSON()
+          const res = signRes;
           setId(res.objectId);
           if (res?.SignatureName) {
             const sanitizename = generateTitleFromFilename(res?.SignatureName);
@@ -76,8 +77,10 @@ const ManageSign = () => {
             setStamp(res?.Stamp);
           }
         } else {
-          if (User?.get("name")) {
-            const sanitizename = generateTitleFromFilename(User?.get("name"));
+          // User is a plain object from authService, use dot notation instead of .get()
+          if (User?.name || User?.Name) {
+            const userName = User?.name || User?.Name;
+            const sanitizename = generateTitleFromFilename(userName);
             const replaceSpace = sanitizeFileName(sanitizename);
             setSignName(replaceSpace);
           }
@@ -228,7 +231,8 @@ const ManageSign = () => {
         const fileRes = await getSecureUrl(response.url);
         if (fileRes?.url) {
           const tenantId = localStorage.getItem("TenantId");
-          const userId = Parse?.User?.current()?.id;
+          const User = authService.getCurrentUser();
+          const userId = User?.id;
           SaveFileSize(file.size, fileRes?.url, tenantId, userId);
           return fileRes?.url;
         } else {
