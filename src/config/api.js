@@ -14,6 +14,12 @@ const apiClient = axios.create({
 apiClient.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('jwtToken');
+    // #region agent log
+    if (config.url?.includes('/emails/send')) {
+      console.log('[DEBUG] Request interceptor for /emails/send', {url:config.url,hasToken:!!token,tokenLength:token?.length,method:config.method,hasData:!!config.data,dataPreview:config.data ? JSON.stringify(config.data).substring(0,100) : null});
+      fetch('http://127.0.0.1:7243/ingest/44a8b1ee-5909-4662-81c1-64197b8dcd0c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'api.js:16',message:'Request interceptor for /emails/send',data:{url:config.url,hasToken:!!token,tokenLength:token?.length,method:config.method,hasData:!!config.data},timestamp:Date.now(),runId:'run1',hypothesisId:'C'})}).catch((e)=>console.error('[DEBUG] Log fetch failed',e));
+    }
+    // #endregion
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -26,8 +32,22 @@ apiClient.interceptors.request.use(
 
 // Response interceptor - Handle errors
 apiClient.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    // #region agent log
+    if (response.config?.url?.includes('/emails/send')) {
+      console.log('[DEBUG] Response interceptor success for /emails/send', {status:response?.status,hasData:!!response?.data,responseData:response?.data});
+      fetch('http://127.0.0.1:7243/ingest/44a8b1ee-5909-4662-81c1-64197b8dcd0c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'api.js:29',message:'Response interceptor success for /emails/send',data:{status:response?.status,hasData:!!response?.data},timestamp:Date.now(),runId:'run1',hypothesisId:'E'})}).catch((e)=>console.error('[DEBUG] Log fetch failed',e));
+    }
+    // #endregion
+    return response;
+  },
   (error) => {
+    // #region agent log
+    if (error.config?.url?.includes('/emails/send')) {
+      console.error('[DEBUG] Response interceptor error for /emails/send', {status:error?.response?.status,statusText:error?.response?.statusText,errorData:error?.response?.data,errorMessage:error?.message,isNetworkError:!error?.response,code:error?.code,fullError:error});
+      fetch('http://127.0.0.1:7243/ingest/44a8b1ee-5909-4662-81c1-64197b8dcd0c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'api.js:32',message:'Response interceptor error for /emails/send',data:{status:error?.response?.status,statusText:error?.response?.statusText,errorData:error?.response?.data,errorMessage:error?.message,isNetworkError:!error?.response,code:error?.code},timestamp:Date.now(),runId:'run1',hypothesisId:'C,D,E'})}).catch((e)=>console.error('[DEBUG] Log fetch failed',e));
+    }
+    // #endregion
     // Handle 401 - Unauthorized (logout user)
     if (error.response?.status === 401) {
       localStorage.removeItem('jwtToken');

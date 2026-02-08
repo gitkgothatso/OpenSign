@@ -1421,15 +1421,34 @@ function PlaceHolderSign() {
           localExpireDate: localExpireDate,
           signingUrl: signPdf
         };
-        // Get subject and html - ensure they're not empty
-        // replaceVar is set when custom email or tenant template is used
-        // Otherwise, use default mailTemplate
+        // Prepare variables object for backend processing
+        // Backend will handle {{#if variable}}...{{/if}} blocks and {{variable}} replacement
+        // Ensure all values are strings (not null/undefined) to match backend expectations
+        const emailVariables = {
+          document_title: String(documentName || ""),
+          note: String(pdfDetails?.[0]?.Note || ""),
+          sender_name: String(senderName || ""),
+          sender_mail: String(senderEmail || ""),
+          sender_phone: String(senderPhone || ""),
+          receiver_name: String(signerMail[i]?.Name || signerMail[i]?.name || ""),
+          receiver_email: String(recipientEmail),
+          receiver_phone: String(signerMail[i]?.Phone || signerMail[i]?.phone || ""),
+          expiry_date: String(localExpireDate || ""),
+          company_name: String(orgName || ""),
+          signing_url: String(signPdf || "")
+        };
+
+        // Get subject and html - use raw templates with variables for backend processing
+        // Backend will process {{#if variable}}...{{/if}} blocks and {{variable}} replacement
         let emailSubject, emailHtml;
+        
         if (replaceVar && replaceVar.subject && replaceVar.body) {
+          // If replaceVar exists, it means variables were already replaced on frontend
+          // This is fine - backend will handle any remaining {{#if}} blocks
           emailSubject = replaceVar.subject;
           emailHtml = replaceVar.body;
         } else {
-          // Use default mailTemplate
+          // Use default mailTemplate - this returns template with {{variable}} placeholders
           const defaultMail = mailTemplate(mailparam);
           emailSubject = defaultMail?.subject || "Document Signature Request";
           emailHtml = defaultMail?.body || "<p>Please sign the document.</p>";
@@ -1445,33 +1464,21 @@ function PlaceHolderSign() {
           continue;
         }
 
-        let emailData = {
-          recipient: recipientEmail,
-          subject: emailSubject,
-          html: emailHtml,
-          replyto: senderEmail || undefined,
-          from: senderEmail || undefined,
-          variables: {
-            document_title: documentName,
-            note: pdfDetails?.[0]?.Note || "",
-            sender_name: senderName || "",
-            sender_mail: senderEmail || "",
-            sender_phone: senderPhone || "",
-            receiver_name: signerMail[i]?.Name || signerMail[i]?.name || "",
-            receiver_email: recipientEmail,
-            receiver_phone: signerMail[i]?.Phone || signerMail[i]?.phone || "",
-            expiry_date: localExpireDate || "",
-            company_name: orgName || "",
-            signing_url: signPdf || ""
-          }
+        // Build email data matching backend expectations exactly
+        // Backend expects: recipient (required), subject (required), html (required), 
+        //                  from (optional), replyto (optional), variables (optional)
+        const emailData = {
+          recipient: recipientEmail.trim(),
+          subject: emailSubject.trim(),
+          html: emailHtml.trim(),
+          variables: emailVariables
         };
 
-        // Remove undefined fields
-        Object.keys(emailData).forEach(key => {
-          if (emailData[key] === undefined) {
-            delete emailData[key];
-          }
-        });
+        // Add optional fields only if they have valid values (matching earlier fix)
+        if (senderEmail && typeof senderEmail === 'string' && senderEmail.trim()) {
+          emailData.from = senderEmail.trim();
+          emailData.replyto = senderEmail.trim();
+        }
 
         sendMail = await emailService.sendCustomEmail(emailData);
       } catch (error) {

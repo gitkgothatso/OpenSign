@@ -729,14 +729,26 @@ const DocumentsReport = (props) => {
       return;
     }
     
+    // Build email data matching backend expectations exactly
+    // Backend expects: recipient (required), subject (required), html (required), 
+    //                  from (optional), replyto (optional), variables (optional)
     const emailData = {
-      replyto: doc?.ExtUserPtr?.Email || "",
-      extUserId: doc?.ExtUserPtr?.objectId,
-      recipient: recipientEmail.trim(), // Ensure trimmed
+      recipient: recipientEmail.trim(),
       subject: emailSubject.trim(),
-      from: doc?.ExtUserPtr?.Email || "",
-      html: emailBody
+      html: emailBody.trim()
     };
+
+    // Add optional fields only if they have valid values (matching forwarding approach)
+    const senderEmail = doc?.ExtUserPtr?.Email;
+    if (senderEmail && typeof senderEmail === 'string' && senderEmail.trim()) {
+      emailData.from = senderEmail.trim();
+      emailData.replyto = senderEmail.trim();
+    }
+    
+    // Note: extUserId is ignored by backend, but kept for compatibility
+    if (doc?.ExtUserPtr?.objectId) {
+      emailData.extUserId = doc.ExtUserPtr.objectId;
+    }
     
     console.log("Sending resend email - final data:", {
       recipient: emailData.recipient,
@@ -749,11 +761,23 @@ const DocumentsReport = (props) => {
     });
     
     try {
+      // #region agent log
+      console.log('[DEBUG] About to call emailService.sendCustomEmail', {recipient:emailData.recipient,subject:emailData.subject,htmlLength:emailData.html?.length,hasFrom:!!emailData.from,fullEmailData:emailData});
+      fetch('http://127.0.0.1:7243/ingest/44a8b1ee-5909-4662-81c1-64197b8dcd0c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'DocumentsReport.jsx:751',message:'About to call emailService.sendCustomEmail',data:{recipient:emailData.recipient,subject:emailData.subject,htmlLength:emailData.html?.length,hasFrom:!!emailData.from},timestamp:Date.now(),runId:'run1',hypothesisId:'A,B'})}).catch((e)=>console.error('[DEBUG] Log fetch failed',e));
+      // #endregion
       const response = await emailService.sendCustomEmail(emailData);
+      // #region agent log
+      console.log('[DEBUG] emailService.sendCustomEmail success', {hasResponse:!!response,responseData:response});
+      fetch('http://127.0.0.1:7243/ingest/44a8b1ee-5909-4662-81c1-64197b8dcd0c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'DocumentsReport.jsx:754',message:'emailService.sendCustomEmail success',data:{hasResponse:!!response,responseStatus:response?.status},timestamp:Date.now(),runId:'run1',hypothesisId:'E'})}).catch((e)=>console.error('[DEBUG] Log fetch failed',e));
+      // #endregion
       console.log("Email sent successfully:", response);
       showAlert("success", t("mail-sent-alert"));
       setIsResendMail({});
     } catch (err) {
+      // #region agent log
+      console.error('[DEBUG] emailService.sendCustomEmail error caught', {errorMessage:err?.message,status:err?.response?.status,errorData:err?.response?.data,fullError:err});
+      fetch('http://127.0.0.1:7243/ingest/44a8b1ee-5909-4662-81c1-64197b8dcd0c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'DocumentsReport.jsx:760',message:'emailService.sendCustomEmail error caught',data:{errorMessage:err?.message,status:err?.response?.status,errorData:err?.response?.data},timestamp:Date.now(),runId:'run1',hypothesisId:'C,D,E'})}).catch((e)=>console.error('[DEBUG] Log fetch failed',e));
+      // #endregion
       console.error("Error sending resend email:", {
         error: err,
         response: err?.response,

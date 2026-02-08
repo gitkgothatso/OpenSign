@@ -747,14 +747,26 @@ const TemplatesReport = (props) => {
       return;
     }
     
+    // Build email data matching backend expectations exactly
+    // Backend expects: recipient (required), subject (required), html (required), 
+    //                  from (optional), replyto (optional), variables (optional)
     const emailData = {
-      replyto: doc?.ExtUserPtr?.Email || "",
-      extUserId: doc?.ExtUserPtr?.objectId,
-      recipient: recipientEmail.trim(), // Ensure trimmed
+      recipient: recipientEmail.trim(),
       subject: emailSubject.trim(),
-      from: doc?.ExtUserPtr?.Email || "",
-      html: emailBody
+      html: emailBody.trim()
     };
+
+    // Add optional fields only if they have valid values (matching forwarding approach)
+    const senderEmail = doc?.ExtUserPtr?.Email;
+    if (senderEmail && typeof senderEmail === 'string' && senderEmail.trim()) {
+      emailData.from = senderEmail.trim();
+      emailData.replyto = senderEmail.trim();
+    }
+    
+    // Note: extUserId is ignored by backend, but kept for compatibility
+    if (doc?.ExtUserPtr?.objectId) {
+      emailData.extUserId = doc.ExtUserPtr.objectId;
+    }
     
     console.log("Sending resend email - final data:", {
       recipient: emailData.recipient,

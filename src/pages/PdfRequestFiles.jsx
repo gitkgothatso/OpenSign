@@ -855,30 +855,54 @@ function PdfRequestFiles(
                           localExpireDate: localExpireDate,
                           signingUrl: signPdf
                         };
-                        const emailData = {
-                          replyto: senderEmail || "",
-                          extUserId: extUserId,
-                          recipient: user.Email,
-                          subject: replaceVar?.subject
-                            ? replaceVar?.subject
-                            : mailTemplate(mailparam).subject,
-                          from: senderEmail,
-                          html: replaceVar?.body
-                            ? replaceVar?.body
-                            : mailTemplate(mailparam).body,
-                          variables: {
-                            document_title: documentName,
-                            note: pdfDetails?.[0]?.Note,
-                            sender_name: senderName,
-                            sender_mail: senderEmail,
-                            sender_phone: senderPhone,
-                            receiver_name: user?.Name || "",
-                            receiver_email: user.Email,
-                            receiver_phone: user?.Phone || "",
-                            signing_url: signPdf
+                        // Build email data matching backend expectations exactly
+                        // Backend expects: recipient (required), subject (required), html (required), 
+                        //                  from (optional), replyto (optional), variables (optional)
+                        const emailSubject = replaceVar?.subject
+                          ? replaceVar.subject
+                          : mailTemplate(mailparam).subject;
+                        const emailHtml = replaceVar?.body
+                          ? replaceVar.body
+                          : mailTemplate(mailparam).body;
+                        
+                        // Ensure recipient email is valid
+                        const recipientEmail = user?.Email || user?.email;
+                        if (!recipientEmail || typeof recipientEmail !== 'string' || !recipientEmail.trim()) {
+                          console.warn(`Skipping email send: invalid recipient email for user`, user);
+                        } else {
+                          // Prepare variables object for backend processing
+                          // Ensure all values are strings (not null/undefined) to match backend expectations
+                          const emailVariables = {
+                            document_title: String(documentName || ""),
+                            note: String(pdfDetails?.[0]?.Note || ""),
+                            sender_name: String(senderName || ""),
+                            sender_mail: String(senderEmail || ""),
+                            sender_phone: String(senderPhone || ""),
+                            receiver_name: String(user?.Name || user?.name || ""),
+                            receiver_email: String(recipientEmail),
+                            receiver_phone: String(user?.Phone || user?.phone || ""),
+                            signing_url: String(signPdf || "")
+                          };
+                          
+                          const emailData = {
+                            recipient: recipientEmail.trim(),
+                            subject: emailSubject.trim(),
+                            html: emailHtml.trim(),
+                            variables: emailVariables
+                          };
+
+                          // Add optional fields only if they have valid values (matching forwarding approach)
+                          if (senderEmail && typeof senderEmail === 'string' && senderEmail.trim()) {
+                            emailData.from = senderEmail.trim();
+                            emailData.replyto = senderEmail.trim();
                           }
-                        };
-                        await emailService.sendCustomEmail(emailData);
+                          
+                          // Note: extUserId is ignored by backend, but kept for compatibility
+                          if (extUserId) {
+                            emailData.extUserId = extUserId;
+                          }
+                          await emailService.sendCustomEmail(emailData);
+                        }
                       } catch (error) {
                         console.log("error", error);
                       }
