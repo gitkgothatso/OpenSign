@@ -329,7 +329,7 @@ function PdfRequestFiles(
         const isTourEnabled =
           documentData[0]?.IsTourEnabled === true ? true : false;
         const getCurrentSigner = getSigners?.find(
-          (data) => data.UserId.objectId === jsonSender?.objectId
+          (data) => data?.UserId?.objectId === jsonSender?.objectId
         );
         currUserId = getCurrentSigner?.objectId
           ? getCurrentSigner.objectId

@@ -1309,11 +1309,44 @@ function PlaceHolderSign() {
 
     for (let i = 0; i < signerMail.length; i++) {
       try {
+        // Extract recipient email early - try multiple paths to find email
+        const recipientEmailRaw = 
+          signerMail[i]?.Email || 
+          signerMail[i]?.email ||
+          signerMail[i]?.signerPtr?.Email ||
+          signerMail[i]?.signerPtr?.email ||
+          (signerMail[i]?.signerPtr && typeof signerMail[i].signerPtr === 'object' && signerMail[i].signerPtr.Email) ||
+          "";
+        
+        const recipientEmail = recipientEmailRaw?.trim() || "";
+        
+        if (!recipientEmail || recipientEmail.length === 0) {
+          console.warn(`Skipping email send for signer ${i}: no email address`, {
+            signerIndex: i,
+            signerData: signerMail[i],
+            availableFields: Object.keys(signerMail[i] || {}),
+            emailPaths: {
+              Email: signerMail[i]?.Email,
+              email: signerMail[i]?.email,
+              signerPtrEmail: signerMail[i]?.signerPtr?.Email,
+              signerPtremail: signerMail[i]?.signerPtr?.email
+            }
+          });
+          continue;
+        }
+        
+        // Basic email format validation
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(recipientEmail)) {
+          console.warn(`Skipping email send for signer ${i}: invalid email format: ${recipientEmail}`);
+          continue;
+        }
+        
         const objectId = signerMail[i].objectId;
         const hostUrl = window.location.origin;
-        //encode this url value `${pdfDetails?.[0].objectId}/${signerMail[i].Email}/${objectId}` to base64 using `btoa` function
+        //encode this url value `${pdfDetails?.[0].objectId}/${recipientEmail}/${objectId}` to base64 using `btoa` function
         const encodeBase64 = btoa(
-          `${pdfDetails?.[0].objectId}/${signerMail[i].Email}/${objectId}`
+          `${pdfDetails?.[0].objectId}/${recipientEmail}/${objectId}`
         );
         let signPdf = `${hostUrl}/login/${encodeBase64}`;
         const orgName = pdfDetails[0]?.ExtUserPtr.Company
@@ -1342,7 +1375,7 @@ function PlaceHolderSign() {
             sender_mail: senderEmail,
             sender_phone: senderPhone || "",
             receiver_name: signerMail[i]?.Name || "",
-            receiver_email: signerMail[i].Email,
+            receiver_email: recipientEmail,
             receiver_phone: signerMail[i]?.Phone || "",
             expiry_date: localExpireDate,
             company_name: orgName,
@@ -1371,7 +1404,7 @@ function PlaceHolderSign() {
             sender_mail: senderEmail,
             sender_phone: senderPhone || "",
             receiver_name: signerMail[i]?.Name || "",
-            receiver_email: signerMail[i].Email,
+            receiver_email: recipientEmail,
             receiver_phone: signerMail[i]?.Phone || "",
             expiry_date: localExpireDate,
             company_name: orgName,
@@ -1388,13 +1421,6 @@ function PlaceHolderSign() {
           localExpireDate: localExpireDate,
           signingUrl: signPdf
         };
-        // Ensure recipient email is valid
-        const recipientEmail = signerMail[i]?.Email || signerMail[i]?.email;
-        if (!recipientEmail) {
-          console.warn(`Skipping email send for signer ${i}: no email address`);
-          continue;
-        }
-
         // Get subject and html - ensure they're not empty
         // replaceVar is set when custom email or tenant template is used
         // Otherwise, use default mailTemplate

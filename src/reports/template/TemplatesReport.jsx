@@ -642,22 +642,160 @@ const TemplatesReport = (props) => {
   };
   const handleResendMail = async (e, doc, user) => {
     e.preventDefault();
+    e.stopPropagation();
+    
+    console.log("handleResendMail called", { 
+      user, 
+      doc, 
+      userDetails, 
+      mail,
+      eventTarget: e.target,
+      formElement: e.target.tagName
+    });
+    
     setActLoader({ [user?.Id]: true });
+    
+    // Get recipient email from userDetails (set by handleNextBtn) or fallback to user parameter
+    // Try multiple paths to find the email address, same logic as display in UI
+    const recipientEmailRaw = 
+      userDetails?.Email || 
+      user?.email || 
+      user?.signerPtr?.Email ||
+      "";
+    
+    // Trim and validate email
+    const recipientEmail = recipientEmailRaw?.trim() || "";
+    
+    // Get form values directly from the form (more reliable than state)
+    const form = e.target;
+    const subjectInput = form.querySelector('#mailsubject');
+    const emailSubject = subjectInput?.value?.trim() || mail.subject?.trim() || "";
+    
+    // For ReactQuill, get value from mail state (ReactQuill doesn't use standard form inputs)
+    const quillEditor = form.querySelector('.ql-editor');
+    const emailBody = mail.body?.trim() || quillEditor?.innerHTML?.trim() || "";
+    
+    console.log("Email data extracted:", {
+      recipientEmail,
+      recipientEmailRaw,
+      emailSubject,
+      emailBodyLength: emailBody.length,
+      subjectInputValue: subjectInput?.value,
+      mailState: mail,
+      userDetails,
+      userObject: {
+        email: user?.email,
+        signerPtr: user?.signerPtr,
+        signerPtrEmail: user?.signerPtr?.Email
+      },
+      quillContent: quillEditor?.innerHTML?.substring(0, 100)
+    });
+    
+    // Validate required data - check for empty string as well
+    if (!recipientEmail || recipientEmail.length === 0) {
+      console.error("Resend email failed: recipient email is missing or empty", { 
+        recipientEmail,
+        recipientEmailRaw,
+        userDetails, 
+        user, 
+        userEmail: user?.email,
+        signerEmail: user?.signerPtr?.Email,
+        signerPtr: user?.signerPtr
+      });
+      showAlert("danger", "Recipient email is required. Please ensure the signer has a valid email address.");
+      setActLoader({});
+      return;
+    }
+    
+    // Basic email format validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(recipientEmail)) {
+      console.error("Resend email failed: invalid email format", { recipientEmail });
+      showAlert("danger", `Invalid email address format: ${recipientEmail}`);
+      setActLoader({});
+      return;
+    }
+    
+    if (!emailSubject) {
+      console.error("Resend email failed: email subject is missing", { 
+        subject: emailSubject,
+        subjectInputValue: subjectInput?.value,
+        mailState: mail
+      });
+      showAlert("danger", "Email subject is required");
+      setActLoader({});
+      return;
+    }
+    
+    if (!emailBody) {
+      console.error("Resend email failed: email body is missing", { 
+        body: emailBody,
+        bodyLength: emailBody.length,
+        mailState: mail,
+        quillContent: quillEditor?.innerHTML
+      });
+      showAlert("danger", "Email body is required");
+      setActLoader({});
+      return;
+    }
+    
+    // Final validation before sending
+    if (!recipientEmail || recipientEmail.trim().length === 0) {
+      console.error("Final validation failed: recipient email is empty", { recipientEmail, user, userDetails });
+      showAlert("danger", "Cannot send email: Recipient email address is missing.");
+      setActLoader({});
+      return;
+    }
+    
     const emailData = {
       replyto: doc?.ExtUserPtr?.Email || "",
       extUserId: doc?.ExtUserPtr?.objectId,
-      recipient: userDetails?.Email,
-      subject: mail.subject,
-      from: doc?.ExtUserPtr?.Email,
-      html: mail.body
+      recipient: recipientEmail.trim(), // Ensure trimmed
+      subject: emailSubject.trim(),
+      from: doc?.ExtUserPtr?.Email || "",
+      html: emailBody
     };
+    
+    console.log("Sending resend email - final data:", {
+      recipient: emailData.recipient,
+      recipientLength: emailData.recipient.length,
+      subject: emailData.subject,
+      from: emailData.from,
+      hasHtml: !!emailData.html,
+      htmlLength: emailData.html.length,
+      fullEmailData: emailData
+    });
+    
     try {
-      await emailService.sendCustomEmail(emailData);
+      const response = await emailService.sendCustomEmail(emailData);
+      console.log("Email sent successfully:", response);
       showAlert("success", t("mail-sent-alert"));
       setIsResendMail({});
     } catch (err) {
-      console.log("err in sendmail", err);
-      showAlert("danger", t("something-went-wrong-mssg"));
+      console.error("Error sending resend email:", {
+        error: err,
+        response: err?.response,
+        responseData: err?.response?.data,
+        status: err?.response?.status,
+        emailData: emailData
+      });
+      
+      // Extract error message with better handling
+      let errorMessage = t("something-went-wrong-mssg");
+      if (err?.response?.data?.error) {
+        errorMessage = err.response.data.error;
+      } else if (err?.response?.data?.message) {
+        errorMessage = err.response.data.message;
+      } else if (err?.message) {
+        errorMessage = err.message;
+      }
+      
+      // If recipient was empty, show a more helpful message
+      if (!emailData.recipient || emailData.recipient.trim().length === 0) {
+        errorMessage = "Cannot send email: Recipient email address is missing. Please check the signer's email address.";
+      }
+      
+      showAlert("danger", errorMessage);
     } finally {
       setIsNextStep({});
       setUserDetails({});
