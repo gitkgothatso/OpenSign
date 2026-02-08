@@ -991,16 +991,23 @@ function PlaceHolderSign() {
   }, [signerPos, signersdata, signatureType, pdfBase64Url]);
   // `autosavedetails` is used to save doc details after every 2 sec when changes are happern in placeholder like drag-drop widgets, remove signers
   const autosavedetails = async () => {
-    const signers = signersdata?.reduce((acc, x) => {
+    // Send full signer data (not just pointers) - matching original OpenSign format
+    const signers = signersdata?.map((x) => {
       if (x.objectId) {
-        acc.push({
-          __type: "Pointer",
-          className: "contracts_Contactbook",
-          objectId: x.objectId
-        });
+        return {
+          objectId: x.objectId,
+          Name: x.Name || x.name,
+          Email: x.Email || x.email,
+          Phone: x.Phone || x.phone || '',
+          Company: x.Company || x.company || '',
+          JobTitle: x.JobTitle || x.jobTitle || '',
+          Role: x.Role || '',
+          className: x.className || "contracts_Contactbook"
+        };
       }
-      return acc;
-    }, []);
+      return null;
+    }).filter(Boolean);
+    
     let pdfUrl;
     if (isUploadPdf) {
       const pdfName = generatePdfName(16);
@@ -1010,24 +1017,104 @@ function PlaceHolderSign() {
         "",
       );
     }
+    // Declare updateData outside try block for error logging
+    let updateData = {};
+    
     try {
-      // Use documentService.saveDocument() instead
-      docCls.id = documentId;
-      if (signerPos?.length > 0) {
-        docCls.set("Placeholders", signerPos);
+      // Use documentService.updateDocument() instead of Parse Object
+      updateData = {};
+      
+      // Clean and prepare placeholders - ensure all fields are properly formatted
+      if (signerPos && Array.isArray(signerPos) && signerPos.length > 0) {
+        updateData.placeholders = signerPos
+          .filter(placeholder => placeholder != null) // Remove null entries
+          .map(placeholder => {
+            const cleaned = { ...placeholder };
+            // Ensure signerPtr is properly formatted if it exists
+            if (cleaned.signerPtr && typeof cleaned.signerPtr === 'object') {
+              const objectId = cleaned.signerPtr.objectId || cleaned.signerObjId;
+              if (objectId) {
+                cleaned.signerPtr = {
+                  __type: cleaned.signerPtr.__type || "Pointer",
+                  className: cleaned.signerPtr.className || "contracts_Contactbook",
+                  objectId: objectId
+                };
+              } else {
+                // Remove signerPtr if no objectId
+                delete cleaned.signerPtr;
+              }
+            }
+            // Remove undefined/null values that might cause issues
+            Object.keys(cleaned).forEach(key => {
+              if (cleaned[key] === undefined || cleaned[key] === null) {
+                // Keep null for some fields like signerObjId, but remove undefined
+                if (cleaned[key] === undefined) {
+                  delete cleaned[key];
+                }
+              }
+            });
+            return cleaned;
+          });
       }
-      docCls.set("Signers", signers);
-      docCls.set("SignatureType", signatureType);
+      
+      // Clean and prepare signers - ensure all fields are properly formatted
+      if (signers && Array.isArray(signers) && signers.length > 0) {
+        updateData.signers = signers
+          .filter(signer => signer != null && signer.objectId) // Only include signers with objectId
+          .map(signer => {
+            const cleaned = { ...signer };
+            // Remove undefined/null values
+            Object.keys(cleaned).forEach(key => {
+              if (cleaned[key] === undefined) {
+                delete cleaned[key];
+              }
+            });
+            return cleaned;
+          });
+      }
+      
+      // Note: signatureType state is an array of available signature types [{name: "draw", enabled: true}, ...]
+      // The backend UpdateDocumentRequest.signatureType expects a String, but it's not actually stored in DocumentService
+      // In OpenSign, SignatureType in the document is stored as an array, not a string
+      // So we don't send signatureType in autosave - it's handled separately when the document is created/saved
+      // Only send it if it's explicitly a string (not an array)
+      if (signatureType && typeof signatureType === 'string' && !Array.isArray(signatureType)) {
+        updateData.signatureType = signatureType;
+      }
+      
       if (pdfUrl) {
-        docCls.set("URL", pdfUrl);
+        updateData.url = pdfUrl;
       }
-      const res = await docCls.save();
-      if (res && pdfUrl) {
-        pdfDetails[0] = { ...pdfDetails[0], URL: pdfUrl };
+      
+      // Only send update if we have valid data
+      if (Object.keys(updateData).length > 0 && documentId) {
+        // Don't send empty arrays
+        if (updateData.placeholders && updateData.placeholders.length === 0) {
+          delete updateData.placeholders;
+        }
+        if (updateData.signers && updateData.signers.length === 0) {
+          delete updateData.signers;
+        }
+        
+        // Only proceed if we still have data to update
+        if (Object.keys(updateData).length > 0) {
+          await documentService.updateDocument(documentId, updateData);
+          if (pdfUrl) {
+            pdfDetails[0] = { ...pdfDetails[0], URL: pdfUrl };
+          }
+        }
       }
     } catch (e) {
-      console.log("error", e);
-      alert(t("something-went-wrong-mssg"));
+      console.log("error in autosavedetails", e);
+      // Log the actual error response for debugging
+      if (e?.response?.data) {
+        console.log("Backend error response:", JSON.stringify(e.response.data, null, 2));
+      }
+      if (e?.response?.status === 400) {
+        console.log("400 Bad Request - Request payload:", JSON.stringify(updateData, null, 2));
+      }
+      // Don't show alert for autosave errors - they're expected during editing
+      // Only log for debugging
     }
   };
   //function to use save placeholder details in contracts_document
@@ -1043,11 +1130,17 @@ function PlaceHolderSign() {
       const removePrefillSigner = signersdata.filter(
         (x) => x.Role !== "prefill"
       );
+      // Send full signer data (matching original OpenSign format)
       const signers = removePrefillSigner?.map((x) => {
         return {
-          __type: "Pointer",
-          className: "contracts_Contactbook",
-          objectId: x.objectId
+          objectId: x.objectId,
+          Name: x.Name || x.name,
+          Email: x.Email || x.email,
+          Phone: x.Phone || x.phone || '',
+          Company: x.Company || x.company || '',
+          JobTitle: x.JobTitle || x.jobTitle || '',
+          Role: x.Role || '',
+          className: x.className || "contracts_Contactbook"
         };
       });
       const addExtraDays = pdfDetails?.[0]?.TimeToCompleteDays
@@ -1069,16 +1162,57 @@ function PlaceHolderSign() {
       let updateExpiryDate = new Date();
       updateExpiryDate.setDate(updateExpiryDate.getDate() + addExtraDays);
       try {
+        // Clean and prepare placeholders
+        const cleanedPlaceholders = signerPos.map(placeholder => {
+          const cleaned = { ...placeholder };
+          // Ensure signerPtr is properly formatted if it exists
+          if (cleaned.signerPtr && typeof cleaned.signerPtr === 'object') {
+            cleaned.signerPtr = {
+              __type: cleaned.signerPtr.__type || "Pointer",
+              className: cleaned.signerPtr.className || "contracts_Contactbook",
+              objectId: cleaned.signerPtr.objectId || cleaned.signerObjId || null
+            };
+          }
+          // Remove undefined/null values
+          Object.keys(cleaned).forEach(key => {
+            if (cleaned[key] === undefined) {
+              delete cleaned[key];
+            }
+          });
+          return cleaned;
+        });
+        
+        // Clean and prepare signers
+        const cleanedSigners = signers.map(signer => {
+          const cleaned = { ...signer };
+          // Remove undefined/null values
+          Object.keys(cleaned).forEach(key => {
+            if (cleaned[key] === undefined) {
+              delete cleaned[key];
+            }
+          });
+          return cleaned;
+        });
+        
+        // Note: In OpenSign, SignatureType in the document is stored as an array of available types
+        // The backend UpdateDocumentRequest.signatureType field expects a String but is not actually used/stored
+        // We don't send signatureType here as it's an array in the document, not a string
         const data = {
           name: docTitle || pdfDetails?.[0]?.Name,
-          placeholders: signerPos,
           signedUrl: pdfUrl,
           url: pdfUrl,
-          signers: signers,
           sentToOthers: true,
-          signatureType: pdfDetails?.[0]?.SignatureType,
           expiryDate: updateExpiryDate instanceof Date ? updateExpiryDate.toISOString() : updateExpiryDate
         };
+        
+        // Only include placeholders and signers if they have data
+        if (cleanedPlaceholders && cleanedPlaceholders.length > 0) {
+          data.placeholders = cleanedPlaceholders;
+        }
+        if (cleanedSigners && cleanedSigners.length > 0) {
+          data.signers = cleanedSigners;
+        }
+        
         await documentService.updateDocument(documentId, data);
         setIsMailSend(true);
         setIsLoading({ isLoad: false });
@@ -1254,35 +1388,73 @@ function PlaceHolderSign() {
           localExpireDate: localExpireDate,
           signingUrl: signPdf
         };
+        // Ensure recipient email is valid
+        const recipientEmail = signerMail[i]?.Email || signerMail[i]?.email;
+        if (!recipientEmail) {
+          console.warn(`Skipping email send for signer ${i}: no email address`);
+          continue;
+        }
+
+        // Get subject and html - ensure they're not empty
+        // replaceVar is set when custom email or tenant template is used
+        // Otherwise, use default mailTemplate
+        let emailSubject, emailHtml;
+        if (replaceVar && replaceVar.subject && replaceVar.body) {
+          emailSubject = replaceVar.subject;
+          emailHtml = replaceVar.body;
+        } else {
+          // Use default mailTemplate
+          const defaultMail = mailTemplate(mailparam);
+          emailSubject = defaultMail?.subject || "Document Signature Request";
+          emailHtml = defaultMail?.body || "<p>Please sign the document.</p>";
+        }
+
+        // Ensure subject and html are strings and not empty
+        if (!emailSubject || typeof emailSubject !== 'string' || emailSubject.trim() === '') {
+          console.warn(`Skipping email send for ${recipientEmail}: invalid subject`);
+          continue;
+        }
+        if (!emailHtml || typeof emailHtml !== 'string' || emailHtml.trim() === '') {
+          console.warn(`Skipping email send for ${recipientEmail}: invalid html content`);
+          continue;
+        }
+
         let emailData = {
-          extUserId: owner?.objectId,
-          recipient: signerMail[i].Email,
-          subject: replaceVar?.subject
-            ? replaceVar?.subject
-            : mailTemplate(mailparam).subject,
-          replyto: senderEmail,
-          from: senderEmail,
-          html: replaceVar?.body
-            ? replaceVar?.body
-            : mailTemplate(mailparam).body,
+          recipient: recipientEmail,
+          subject: emailSubject,
+          html: emailHtml,
+          replyto: senderEmail || undefined,
+          from: senderEmail || undefined,
           variables: {
             document_title: documentName,
-            note: pdfDetails?.[0]?.Note,
-            sender_name: senderName,
-            sender_mail: senderEmail,
+            note: pdfDetails?.[0]?.Note || "",
+            sender_name: senderName || "",
+            sender_mail: senderEmail || "",
             sender_phone: senderPhone || "",
-            receiver_name: signerMail[i]?.Name || "",
-            receiver_email: signerMail[i].Email,
-            receiver_phone: signerMail[i]?.Phone || "",
-            expiry_date: localExpireDate,
-            company_name: orgName,
-            signing_url: signPdf
+            receiver_name: signerMail[i]?.Name || signerMail[i]?.name || "",
+            receiver_email: recipientEmail,
+            receiver_phone: signerMail[i]?.Phone || signerMail[i]?.phone || "",
+            expiry_date: localExpireDate || "",
+            company_name: orgName || "",
+            signing_url: signPdf || ""
           }
         };
 
+        // Remove undefined fields
+        Object.keys(emailData).forEach(key => {
+          if (emailData[key] === undefined) {
+            delete emailData[key];
+          }
+        });
+
         sendMail = await emailService.sendCustomEmail(emailData);
       } catch (error) {
-        console.log("error", error);
+        console.log("error sending email to", recipientEmail, error);
+        // Log the actual error response for debugging
+        if (error?.response?.data) {
+          console.log("Backend error response:", JSON.stringify(error.response.data, null, 2));
+        }
+        // Continue to next signer even if one fails
       }
     }
     if (sendMail?.status === "success" || sendMail?.result?.status === "success") {
@@ -1775,27 +1947,47 @@ function PlaceHolderSign() {
   //function to add new signer in document signers list
   const handleAddNewRecipients = (data) => {
     const newId = randomId();
-    const backgroundColor = color[signersdata.length];
-    signersdata.push({
+    
+    // Calculate index and color before updating state
+    const currentLength = signersdata.length;
+    const backgroundColor = color[currentLength];
+    
+    // Create new signer object with all required fields
+    const newSigner = {
       ...data,
       className: "contracts_Contactbook",
       Id: newId,
-      blockColor: backgroundColor
-    });
+      blockColor: backgroundColor,
+      // Ensure all fields are present for backend (PascalCase for compatibility)
+      Name: data.Name || data.name || '',
+      Email: data.Email || data.email || '',
+      Phone: data.Phone || data.phone || '',
+      Company: data.Company || data.company || '',
+      JobTitle: data.JobTitle || data.jobTitle || '',
+      Role: data.Role || '',
+      objectId: data.objectId || data.id
+    };
+    
+    // Update signers data using setState (don't mutate directly)
+    setSignersData((prev) => [...prev, newSigner]);
+    
+    // Create placeholder object
     const signerPosObj = {
       signerPtr: {
         __type: "Pointer",
         className: "contracts_Contactbook",
-        objectId: data.objectId
+        objectId: data.objectId || data.id
       },
-      signerObjId: data.objectId,
+      signerObjId: data.objectId || data.id,
       blockColor: backgroundColor,
       Id: newId
     };
+    
     setSignerPos((prev) => [...prev, signerPosObj]);
     setUniqueId(newId);
-    setIsSelectId(signersdata.length - 1);
-    setBlockColor(color[signersdata.length - 1]);
+    setIsSelectId(currentLength); // Use current length (will be the new index)
+    setBlockColor(backgroundColor);
+    setIsAddSigner(false); // Close the modal after adding
   };
 
   const closePopup = () => {

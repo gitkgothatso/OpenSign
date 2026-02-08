@@ -57,7 +57,6 @@ function DashboardReport(props) {
       try {
         const headers = {
           "Content-Type": "application/json",
-          "X-Parse-Application-Id": localStorage.getItem("parseAppId"),
           sessiontoken: localStorage.getItem("accesstoken")
         };
         // Use reportService instead of Parse endpoint
@@ -110,7 +109,6 @@ function DashboardReport(props) {
 
       const headers = {
         "Content-Type": "application/json",
-        "X-Parse-Application-Id": localStorage.getItem("parseAppId"),
         sessiontoken: localStorage.getItem("accesstoken")
       };
       try {
@@ -128,11 +126,11 @@ function DashboardReport(props) {
           params.searchTerm || ""
         );
         if (id === "5Go51Q7T8r") {
-          const listData = res.filter((x) => x.Signers.length > 0);
+          const listData = res.filter((x) => x.Signers?.length > 0);
           let arr = [];
           for (const obj of listData) {
             const isSigner = obj.Signers?.some(
-              (item) => item.UserId.objectId === currentUser
+              (item) => item?.UserId?.objectId === currentUser
             );
             if (isSigner) {
               let isRecord;

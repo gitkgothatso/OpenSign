@@ -70,17 +70,7 @@ function DriveBody(props) {
       props.setPdfData(updatedData);
       props.sortingData(null, null, updatedData);
       try {
-        await axios.put(
-          `${localStorage.getItem("baseUrl")}classes/contracts_Document/${docId}`,
-          updateName,
-          {
-            headers: {
-              "Content-Type": "application/json",
-              "X-Parse-Application-Id": localStorage.getItem("parseAppId"),
-              "X-Parse-Session-Token": localStorage.getItem("accesstoken")
-            }
-          }
-        );
+        await documentService.updateDocument(docId, updateName);
       } catch (err) {
         console.error("Error in rename doc", err);
         props.setIsAlert({
@@ -160,32 +150,17 @@ function DriveBody(props) {
     const docId = docData.objectId;
     const data = { IsArchive: true };
 
-    await axios
-      .put(
-        `${localStorage.getItem("baseUrl")}classes/contracts_Document/${docId}`,
-        data,
-        {
-          headers: {
-            "Content-Type": "application/json",
-            "X-Parse-Application-Id": localStorage.getItem("parseAppId"),
-            "X-Parse-Session-Token": localStorage.getItem("accesstoken")
-          }
-        }
-      )
-      .then((result) => {
-        const res = result.data;
-        if (res) {
-          const updatedData = props.pdfData.filter((x) => x.objectId !== docId);
-          props.setPdfData(updatedData);
-        }
-      })
-      .catch((err) => {
-        console.error("Err in delete doc", err);
-        props.setIsAlert({
-          isShow: true,
-          alertMessage: t("something-went-wrong-mssg")
-        });
+    try {
+      await documentService.updateDocument(docId, data);
+      const updatedData = props.pdfData.filter((x) => x.objectId !== docId);
+      props.setPdfData(updatedData);
+    } catch (err) {
+      console.error("Err in delete doc", err);
+      props.setIsAlert({
+        isShow: true,
+        alertMessage: t("something-went-wrong-mssg")
       });
+    }
   };
   const handleMoveDocument = async (docData) => {
     setIsOpenMoveModal(true);
@@ -217,31 +192,15 @@ function DriveBody(props) {
         updateData = { Folder: { __op: "Delete" } };
       }
 
-      await axios
-        .put(
-          `${localStorage.getItem("baseUrl")}classes/contracts_Document/${updateDocId}`,
-          updateData,
-          {
-            headers: {
-              "Content-Type": "application/json",
-              "X-Parse-Application-Id": localStorage.getItem("parseAppId"),
-              "X-Parse-Session-Token": localStorage.getItem("accesstoken")
-            }
-          }
-        )
-
-        .then((Listdata) => {
-          const res = Listdata.data;
-          if (res) {
-            const updatedData = props.pdfData.filter(
-              (x) => x.objectId !== updateDocId
-            );
-            props.setPdfData(updatedData);
-          }
-        })
-        .catch((err) => {
-          console.error("err in move folder", err);
-        });
+      try {
+        await documentService.updateDocument(updateDocId, updateData);
+        const updatedData = props.pdfData.filter(
+          (x) => x.objectId !== updateDocId
+        );
+        props.setPdfData(updatedData);
+      } catch (err) {
+        console.error("err in move folder", err);
+      }
 
       setIsOpenMoveModal(false);
     } else {

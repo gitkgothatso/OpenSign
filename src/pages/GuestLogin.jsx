@@ -162,8 +162,7 @@ function GuestLogin() {
       try {
         let url = `${serverUrl}functions/AuthLoginAsMail`;
         const headers = {
-          "Content-Type": "application/json",
-          "X-Parse-Application-Id": parseId
+          "Content-Type": "application/json"
         };
         let body = {
           email: email?.toLowerCase()?.replace(/\s/g, ""),

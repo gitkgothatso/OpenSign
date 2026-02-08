@@ -119,12 +119,19 @@ export default userService;
 /**
  * Get list of users in organization
  * Replaces: Parse.Cloud.run('getuserlistbyorg', params)
- * @param {string} orgId - Organization ID
+ * @param {string} orgId - Organization ID (optional, if not provided, uses current user's tenant)
  * @returns {Promise<Array>} List of users in organization
  */
 export const getUserListByOrg = async (orgId) => {
-  const response = await apiClient.get(`/tenants/${orgId}/users`);
-  return response.data;
+  if (orgId) {
+    // Use provided tenantId
+    const response = await apiClient.get(`/tenants/${orgId}/users`);
+    return response.data;
+  } else {
+    // Use current user's tenant (backend extracts it automatically)
+    const response = await apiClient.get(`/tenants/users`);
+    return response.data;
+  }
 };
 
 /**

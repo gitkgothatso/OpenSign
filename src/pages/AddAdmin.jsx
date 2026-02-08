@@ -69,7 +69,6 @@ const AddAdmin = () => {
       console.log("Err while logging out", err);
     }
     const baseUrl = localStorage.getItem("baseUrl");
-    const appid = localStorage.getItem("parseAppId");
     const applogo = localStorage.getItem("appLogo");
     const defaultmenuid = localStorage.getItem("defaultmenuid");
     const PageLanding = localStorage.getItem("PageLanding");
@@ -79,13 +78,11 @@ const AddAdmin = () => {
     localStorage.clear();
     saveLanguageInLocal(i18n);
     localStorage.setItem("baseUrl", baseUrl);
-    localStorage.setItem("parseAppId", appid);
     localStorage.setItem("appLogo", applogo);
     localStorage.setItem("defaultmenuid", defaultmenuid);
     localStorage.setItem("PageLanding", PageLanding);
     localStorage.setItem("userSettings", userSettings);
     localStorage.setItem("baseUrl", baseUrl);
-    localStorage.setItem("parseAppId", appid);
     localStorage.setItem("favicon", favicon);
   };
 

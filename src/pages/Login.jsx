@@ -165,11 +165,9 @@ function Login() {
 
   const thirdpartyLoginfn = async (sessionToken) => {
     const baseUrl = localStorage.getItem("baseUrl");
-    const parseAppId = localStorage.getItem("parseAppId");
     const res = await axios.get(baseUrl + "users/me", {
       headers: {
-        "X-Parse-Session-Token": sessionToken,
-        "X-Parse-Application-Id": parseAppId
+        "X-Parse-Session-Token": sessionToken
       }
     });
     // JWT token is already stored, no need for Parse.User.become
@@ -346,7 +344,6 @@ function Login() {
     let defaultmenuid = localStorage.getItem("defaultmenuid");
     let PageLanding = localStorage.getItem("PageLanding");
     let baseUrl = localStorage.getItem("baseUrl");
-    let appid = localStorage.getItem("parseAppId");
     let favicon = localStorage.getItem("favicon");
 
     localStorage.clear();
@@ -357,7 +354,6 @@ function Login() {
     localStorage.setItem("PageLanding", PageLanding);
     localStorage.setItem("userSettings", appdata);
     localStorage.setItem("baseUrl", baseUrl);
-    localStorage.setItem("parseAppId", appid);
     localStorage.setItem("favicon", favicon);
   };
 

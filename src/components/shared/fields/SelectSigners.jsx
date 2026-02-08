@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from "react";
 import AsyncSelect from "react-select/async";
 import { useTranslation } from "react-i18next";
-import axios from "axios";
 import { handleUnlinkSigner } from "../../../constant/Utils";
+import contactService from "../../../services/contactService";
 
 const SelectSigners = (props) => {
   const { t } = useTranslation();
@@ -87,40 +87,32 @@ const SelectSigners = (props) => {
   };
   const loadOptions = async (inputValue) => {
     try {
-      const baseURL = localStorage.getItem("baseUrl");
-      const url = `${baseURL}functions/getsigners`;
-      const token =
-            { "X-Parse-Session-Token": localStorage.getItem("accesstoken") };
-      const headers = {
-        "Content-Type": "application/json",
-        "X-Parse-Application-Id": localStorage.getItem("parseAppId"),
-        ...token
-      };
-      const search = inputValue;
-      const axiosRes = await axios.post(url, { search }, { headers });
-      const contactRes = axiosRes?.data?.result || [];
-      if (contactRes) {
-        const res = JSON.parse(JSON.stringify(contactRes));
-        //compareArrays is a function where compare between two array (total signersList and document signers list)
-        //and filter signers from total signer's list which already present in document's signers list
-        // const compareArrays = (res, signerObj) => {
-        //   return res.filter(
-        //     (item1) =>
-        //       !signerObj.find((item2) => item2.objectId === item1.objectId)
-        //   );
-        // };
-        //get update signer's List if signersdata is present
-        // const updateSignersList =
-        //   props?.signersData && compareArrays(res, props?.signersData);
-        const result = res;
-        setUserList(result);
-        return await result.map((item) => ({
-          label: `${item.Name}<${item.Email}>`,
-          value: item.objectId
-        }));
-      }
+      // Use new REST API endpoint for searching contacts
+      const searchTerm = inputValue || "";
+      const response = await contactService.searchContacts(searchTerm, null, 0, 50);
+      
+      // Extract contacts from paginated response
+      const contacts = response?.content || [];
+      
+      // Transform to expected format (PascalCase for compatibility)
+      const result = contacts.map(contact => ({
+        objectId: contact.objectId || contact.id,
+        id: contact.objectId || contact.id,
+        Name: contact.Name || contact.name,
+        Email: contact.Email || contact.email,
+        Phone: contact.Phone || contact.phone || '',
+        Company: contact.Company || contact.company || '',
+        JobTitle: contact.JobTitle || contact.jobTitle || ''
+      }));
+      
+      setUserList(result);
+      return result.map((item) => ({
+        label: `${item.Name}<${item.Email}>`,
+        value: item.objectId
+      }));
     } catch (error) {
-      console.log("err", error);
+      console.log("err in loadOptions", error);
+      return [];
     }
   };
   return (

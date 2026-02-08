@@ -28,9 +28,12 @@ export const authService = {
   },
 
   // Login existing user
-  login: async (username, password) => {
+  // Accepts either username or email as first parameter
+  login: async (usernameOrEmail, password) => {
+    // Determine if input is email or username
+    const isEmail = usernameOrEmail.includes('@');
     const response = await apiClient.post('/auth/login', {
-      username,
+      ...(isEmail ? { email: usernameOrEmail } : { username: usernameOrEmail }),
       password
     });
     

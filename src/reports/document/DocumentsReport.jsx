@@ -8,6 +8,9 @@ import Alert from "../../primitives/Alert";
 import Tooltip from "../../primitives/Tooltip";
 import ShareButton from "../../primitives/ShareButton";
 import { saveAsTemplate, recreateDocument } from "../../services/documentService";
+import templateService from "../../services/templateService";
+import authService from "../../services/authService";
+import { emailService } from "../../services/emailService";
 import {
   copytoData,
   fetchUrl,
@@ -186,11 +189,7 @@ const DocumentsReport = (props) => {
 
   //function to fetch tenant Details
   const fetchTenantDetails = async () => {
-    const user = JSON.parse(
-      localStorage.getItem(
-        `Parse/${localStorage.getItem("parseAppId")}/currentUser`
-      )
-    );
+    const user = authService.getCurrentUser();
     if (user) {
       try {
         const tenantDetails = await getTenantDetails(user?.objectId);
@@ -237,19 +236,9 @@ const DocumentsReport = (props) => {
         templateId: templateId,
         include: ["Placeholders.signerPtr"]
       };
-      const axiosRes = await axios.post(
-        `${localStorage.getItem("baseUrl")}functions/getTemplate`,
-        params,
-        {
-          headers: {
-            "Content-Type": "application/json",
-            "X-Parse-Application-Id": localStorage.getItem("parseAppId"),
-            sessionToken: localStorage.getItem("accesstoken")
-          }
-        }
-      );
-      if (axiosRes) {
-        return axiosRes;
+      const template = await templateService.getTemplate(templateId);
+      if (template) {
+        return { data: { result: template } };
       }
     } catch (e) {
       console.log("Error to fetch template in report", e);
@@ -362,7 +351,6 @@ const DocumentsReport = (props) => {
       const res = await axios.put(url + item.objectId, body, {
         headers: {
           "Content-Type": "application/json",
-          "X-Parse-Application-Id": localStorage.getItem("parseAppId"),
           "X-Parse-Session-Token": localStorage.getItem("accesstoken")
         }
       });
@@ -429,10 +417,7 @@ const DocumentsReport = (props) => {
   };
   //function to handle revoke/decline docment
   const handleRevoke = async (item) => {
-    const senderUser = localStorage.getItem(
-      `Parse/${localStorage.getItem("parseAppId")}/currentUser`
-    );
-    const jsonSender = JSON.parse(senderUser);
+    const jsonSender = authService.getCurrentUser();
     setIsRevoke({});
     setActLoader({ [`${item.objectId}`]: true });
     const data = {
@@ -444,38 +429,21 @@ const DocumentsReport = (props) => {
         objectId: jsonSender?.objectId
       }
     };
-    await axios
-      .put(
-        `${localStorage.getItem("baseUrl")}classes/contracts_Document/${
-          item.objectId
-        }`,
-        data,
-        {
-          headers: {
-            "Content-Type": "application/json",
-            "X-Parse-Application-Id": localStorage.getItem("parseAppId"),
-            "X-Parse-Session-Token": localStorage.getItem("accesstoken")
-          }
-        }
-      )
-      .then(async (result) => {
-        const res = result.data;
-        if (res) {
-          setActLoader({});
-          showAlert("success", t("record-revoke-alert"));
-          const upldatedList = props.List.filter(
-            (x) => x.objectId !== item.objectId
-          );
-          props.setList(upldatedList);
-        }
-        setReason("");
-      })
-      .catch((err) => {
-        console.log("err", err);
-        setReason("");
-        showAlert("danger", t("something-went-wrong-mssg"));
-        setActLoader({});
-      });
+    try {
+      await documentService.updateDocument(item.objectId, data);
+      setActLoader({});
+      showAlert("success", t("record-revoke-alert"));
+      const upldatedList = props.List.filter(
+        (x) => x.objectId !== item.objectId
+      );
+      props.setList(upldatedList);
+      setReason("");
+    } catch (err) {
+      console.log("err", err);
+      setReason("");
+      showAlert("danger", t("something-went-wrong-mssg"));
+      setActLoader({});
+    }
   };
 
   // `handleDownload` is used to get valid doc url available in completed report
@@ -587,11 +555,30 @@ const DocumentsReport = (props) => {
   // `handleNextBtn` is used to open edit mail template screen in resend mail modal
   // as well as replace variable with original one
   const handleNextBtn = (user, doc) => {
+    // Extract email using same logic as display (line 1685-1687)
+    const email = user?.email || user?.signerPtr?.Email || "";
+    const emailTrimmed = email?.trim() || "";
+    
+    console.log("handleNextBtn called", {
+      user,
+      email,
+      emailTrimmed,
+      userEmail: user?.email,
+      signerPtrEmail: user?.signerPtr?.Email,
+      signerPtr: user?.signerPtr
+    });
+    
+    if (!emailTrimmed) {
+      console.error("handleNextBtn: No email found for user", { user });
+      showAlert("danger", "Cannot resend email: Signer email address is missing.");
+      return;
+    }
+    
     const userdata = {
-      Name: user?.signerPtr?.Name,
-      Email: user.email ? user?.email : user.signerPtr?.Email,
-      Phone: user?.signerPtr?.Phone,
-      objectId: user?.signerPtr?.objectId
+      Name: user?.signerPtr?.Name || "",
+      Email: emailTrimmed,
+      Phone: user?.signerPtr?.Phone || "",
+      objectId: user?.signerPtr?.objectId || ""
     };
     setUserDetails(userdata);
     const encodeBase64 = user.email
@@ -636,36 +623,161 @@ const DocumentsReport = (props) => {
   };
   const handleResendMail = async (e, doc, user) => {
     e.preventDefault();
+    e.stopPropagation();
+    
+    console.log("handleResendMail called", { 
+      user, 
+      doc, 
+      userDetails, 
+      mail,
+      eventTarget: e.target,
+      formElement: e.target.tagName
+    });
+    
     setActLoader({ [user?.Id]: true });
-    const url = `${localStorage.getItem("baseUrl")}functions/sendmailv3`;
-    const headers = {
-      "Content-Type": "application/json",
-      "X-Parse-Application-Id": localStorage.getItem("parseAppId"),
-      sessionToken: localStorage.getItem("accesstoken")
-    };
-    let params = {
-      replyto:
-        doc?.ExtUserPtr?.Email ||
-        "",
+    
+    // Get recipient email from userDetails (set by handleNextBtn) or fallback to user parameter
+    // Try multiple paths to find the email address, same logic as display in UI (line 1685-1687)
+    const recipientEmailRaw = 
+      userDetails?.Email || 
+      user?.email || 
+      user?.signerPtr?.Email ||
+      "";
+    
+    // Trim and validate email
+    const recipientEmail = recipientEmailRaw?.trim() || "";
+    
+    // Get form values directly from the form (more reliable than state)
+    const form = e.target;
+    const subjectInput = form.querySelector('#mailsubject');
+    const emailSubject = subjectInput?.value?.trim() || mail.subject?.trim() || "";
+    
+    // For ReactQuill, get value from mail state (ReactQuill doesn't use standard form inputs)
+    // Also check if there's a hidden input or textarea with the Quill content
+    const quillEditor = form.querySelector('.ql-editor');
+    const emailBody = mail.body?.trim() || quillEditor?.innerHTML?.trim() || "";
+    
+    console.log("Email data extracted:", {
+      recipientEmail,
+      recipientEmailRaw,
+      emailSubject,
+      emailBodyLength: emailBody.length,
+      subjectInputValue: subjectInput?.value,
+      mailState: mail,
+      userDetails,
+      userObject: {
+        email: user?.email,
+        signerPtr: user?.signerPtr,
+        signerPtrEmail: user?.signerPtr?.Email
+      },
+      quillContent: quillEditor?.innerHTML?.substring(0, 100)
+    });
+    
+    // Validate required data - check for empty string as well
+    if (!recipientEmail || recipientEmail.length === 0) {
+      console.error("Resend email failed: recipient email is missing or empty", { 
+        recipientEmail,
+        recipientEmailRaw,
+        userDetails, 
+        user, 
+        userEmail: user?.email,
+        signerEmail: user?.signerPtr?.Email,
+        signerPtr: user?.signerPtr
+      });
+      showAlert("danger", "Recipient email is required. Please ensure the signer has a valid email address.");
+      setActLoader({});
+      return;
+    }
+    
+    // Basic email format validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(recipientEmail)) {
+      console.error("Resend email failed: invalid email format", { recipientEmail });
+      showAlert("danger", `Invalid email address format: ${recipientEmail}`);
+      setActLoader({});
+      return;
+    }
+    
+    if (!emailSubject) {
+      console.error("Resend email failed: email subject is missing", { 
+        subject: emailSubject,
+        subjectInputValue: subjectInput?.value,
+        mailState: mail
+      });
+      showAlert("danger", "Email subject is required");
+      setActLoader({});
+      return;
+    }
+    
+    if (!emailBody) {
+      console.error("Resend email failed: email body is missing", { 
+        body: emailBody,
+        bodyLength: emailBody.length,
+        mailState: mail,
+        quillContent: quillEditor?.innerHTML
+      });
+      showAlert("danger", "Email body is required");
+      setActLoader({});
+      return;
+    }
+    
+    // Final validation before sending
+    if (!recipientEmail || recipientEmail.trim().length === 0) {
+      console.error("Final validation failed: recipient email is empty", { recipientEmail, user, userDetails });
+      showAlert("danger", "Cannot send email: Recipient email address is missing.");
+      setActLoader({});
+      return;
+    }
+    
+    const emailData = {
+      replyto: doc?.ExtUserPtr?.Email || "",
       extUserId: doc?.ExtUserPtr?.objectId,
-      recipient: userDetails?.Email,
-      subject: mail.subject,
-      from:
-        doc?.ExtUserPtr?.Email,
-      html: mail.body
+      recipient: recipientEmail.trim(), // Ensure trimmed
+      subject: emailSubject.trim(),
+      from: doc?.ExtUserPtr?.Email || "",
+      html: emailBody
     };
+    
+    console.log("Sending resend email - final data:", {
+      recipient: emailData.recipient,
+      recipientLength: emailData.recipient.length,
+      subject: emailData.subject,
+      from: emailData.from,
+      hasHtml: !!emailData.html,
+      htmlLength: emailData.html.length,
+      fullEmailData: emailData
+    });
+    
     try {
-      const res = await axios.post(url, params, { headers: headers });
-      if (res?.data?.result?.status === "success") {
-        showAlert("success", t("mail-sent-alert"));
-        setIsResendMail({});
-      }
-      else {
-        showAlert("danger", t("something-went-wrong-mssg"));
-      }
+      const response = await emailService.sendCustomEmail(emailData);
+      console.log("Email sent successfully:", response);
+      showAlert("success", t("mail-sent-alert"));
+      setIsResendMail({});
     } catch (err) {
-      console.log("err in sendmail", err);
-      showAlert("danger", t("something-went-wrong-mssg"));
+      console.error("Error sending resend email:", {
+        error: err,
+        response: err?.response,
+        responseData: err?.response?.data,
+        status: err?.response?.status,
+        emailData: emailData
+      });
+      
+      // Extract error message with better handling
+      let errorMessage = t("something-went-wrong-mssg");
+      if (err?.response?.data?.error) {
+        errorMessage = err.response.data.error;
+      } else if (err?.response?.data?.message) {
+        errorMessage = err.response.data.message;
+      } else if (err?.message) {
+        errorMessage = err.message;
+      }
+      
+      // If recipient was empty, show a more helpful message
+      if (!emailData.recipient || emailData.recipient.trim().length === 0) {
+        errorMessage = "Cannot send email: Recipient email address is missing. Please check the signer's email address.";
+      }
+      
+      showAlert("danger", errorMessage);
     } finally {
       setIsNextStep({});
       setUserDetails({});
@@ -723,7 +835,6 @@ const DocumentsReport = (props) => {
           const res = await axios.put(url + item.objectId, body, {
             headers: {
               "Content-Type": "application/json",
-              "X-Parse-Application-Id": localStorage.getItem("parseAppId"),
               "X-Parse-Session-Token": localStorage.getItem("accesstoken")
             }
           });
@@ -1573,10 +1684,12 @@ const DocumentsReport = (props) => {
                                         </div>
                                       )}
                                       <form
-                                        onSubmit={(e) =>
-                                          handleResendMail(e, item, user)
-                                        }
+                                        onSubmit={(e) => {
+                                          console.log("Form submit triggered", { user, item, mail, userDetails });
+                                          handleResendMail(e, item, user);
+                                        }}
                                         className="w-full flex flex-col gap-2 p-3 text-base-content relative"
+                                        noValidate
                                       >
                                         <div className="absolute right-5 text-xs z-40">
                                           <Tooltip

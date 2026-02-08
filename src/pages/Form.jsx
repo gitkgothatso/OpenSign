@@ -250,8 +250,9 @@ const Forms = (props) => {
           file.name.toLowerCase().endsWith(".docx")
         ) {
           try {
-            const baseApi = localStorage.getItem("baseUrl") || "";
-            const url = removeTrailingSegment(baseApi) + "/docxtopdf";
+            // Use new Java backend API endpoint
+            const apiBaseUrl = import.meta.env.VITE_API_URL || 'http://localhost:8080';
+            const url = `${apiBaseUrl}/api/v1/files/docxtopdf`;
             let fd = new FormData();
             fd.append("file", file);
             setfileload(true);
@@ -259,7 +260,7 @@ const Forms = (props) => {
             const config = {
               headers: {
                 "content-type": "multipart/form-data",
-                sessiontoken: localStorage.getItem("jwtToken")
+                "Authorization": `Bearer ${localStorage.getItem("jwtToken")}`
               },
               signal: abortController.signal,
               onUploadProgress: (progressEvent) => {
@@ -273,6 +274,7 @@ const Forms = (props) => {
             };
             const res = await axios.post(url, fd, config);
             if (res.data?.url) {
+              // Fetch the PDF from the URL
               const pdfRes = await axios.get(res.data.url, {
                 responseType: "arraybuffer"
               });
@@ -283,9 +285,8 @@ const Forms = (props) => {
             setfileload(false);
             removeFile(e);
             console.log("err in docx to pdf ", err);
-            const error =
-                  t("docx-error");
-            if (err?.code === 209) {
+            const error = t("docx-error");
+            if (err?.response?.status === 401) {
               dispatch(sessionStatus(false));
             } else {
               alert(error);

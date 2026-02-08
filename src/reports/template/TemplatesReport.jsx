@@ -8,7 +8,10 @@ import Tooltip from "../../primitives/Tooltip";
 import ShareButton from "../../primitives/ShareButton";
 import Tour from "../../primitives/Tour";
 import { getTeams, createDuplicate } from "../../services/templateService";
+import templateService from "../../services/templateService";
 import userService from "../../services/userService";
+import authService from "../../services/authService";
+import { emailService } from "../../services/emailService";
 import {
   copytoData,
   fetchUrl,
@@ -208,11 +211,7 @@ const TemplatesReport = (props) => {
 
   //function to fetch tenant Details
   const fetchTenantDetails = async () => {
-    const user = JSON.parse(
-      localStorage.getItem(
-        `Parse/${localStorage.getItem("parseAppId")}/currentUser`
-      )
-    );
+    const user = authService.getCurrentUser();
     if (user) {
       try {
         const tenantDetails = await getTenantDetails(user?.objectId);
@@ -283,19 +282,9 @@ const TemplatesReport = (props) => {
         templateId: templateId,
         include: ["Placeholders.signerPtr"]
       };
-      const axiosRes = await axios.post(
-        `${localStorage.getItem("baseUrl")}functions/getTemplate`,
-        params,
-        {
-          headers: {
-            "Content-Type": "application/json",
-            "X-Parse-Application-Id": localStorage.getItem("parseAppId"),
-            sessionToken: localStorage.getItem("accesstoken")
-          }
-        }
-      );
-      if (axiosRes?.data) {
-        return axiosRes;
+      const template = await templateService.getTemplate(templateId);
+      if (template) {
+        return { data: { result: template } };
       }
     } catch (e) {
       console.log("Error to fetch template in report", e);
@@ -394,7 +383,6 @@ const TemplatesReport = (props) => {
       const res = await axios.put(url + item.objectId, body, {
         headers: {
           "Content-Type": "application/json",
-          "X-Parse-Application-Id": localStorage.getItem("parseAppId"),
           "X-Parse-Session-Token": localStorage.getItem("accesstoken")
         }
       });
@@ -655,32 +643,18 @@ const TemplatesReport = (props) => {
   const handleResendMail = async (e, doc, user) => {
     e.preventDefault();
     setActLoader({ [user?.Id]: true });
-    const url = `${localStorage.getItem("baseUrl")}functions/sendmailv3`;
-    const headers = {
-      "Content-Type": "application/json",
-      "X-Parse-Application-Id": localStorage.getItem("parseAppId"),
-      sessionToken: localStorage.getItem("accesstoken")
-    };
-    let params = {
-      replyto:
-        doc?.ExtUserPtr?.Email ||
-        "",
+    const emailData = {
+      replyto: doc?.ExtUserPtr?.Email || "",
       extUserId: doc?.ExtUserPtr?.objectId,
       recipient: userDetails?.Email,
       subject: mail.subject,
-      from:
-        doc?.ExtUserPtr?.Email,
+      from: doc?.ExtUserPtr?.Email,
       html: mail.body
     };
     try {
-      const res = await axios.post(url, params, { headers: headers });
-      if (res?.data?.result?.status === "success") {
-        showAlert("success", t("mail-sent-alert"));
-        setIsResendMail({});
-      }
-      else {
-        showAlert("danger", t("something-went-wrong-mssg"));
-      }
+      await emailService.sendCustomEmail(emailData);
+      showAlert("success", t("mail-sent-alert"));
+      setIsResendMail({});
     } catch (err) {
       console.log("err in sendmail", err);
       showAlert("danger", t("something-went-wrong-mssg"));
@@ -912,11 +886,7 @@ const TemplatesReport = (props) => {
       setDocumentId(res.id);
       setActLoader({});
       setIsMailModal(true);
-      const user = JSON.parse(
-        localStorage.getItem(
-          `Parse/${localStorage.getItem("parseAppId")}/currentUser`
-        )
-      );
+      const user = authService.getCurrentUser();
       if (user) {
         try {
           const tenantDetails = await getTenantDetails(user?.objectId);

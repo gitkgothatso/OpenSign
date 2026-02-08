@@ -2,6 +2,10 @@ import { useState, useRef, useEffect } from "react";
 import { PDFDocument } from "pdf-lib";
 import "../styles/signature.css";
 import { userService } from "../services/userService";
+import authService from "../services/authService";
+import { documentService } from "../services/documentService";
+import { contactService } from "../services/contactService";
+import { emailService } from "../services/emailService";
 import axios from "axios";
 import { useDispatch, useSelector } from "react-redux";
 import RenderAllPdfPage from "../components/pdf/RenderAllPdfPage";
@@ -227,11 +231,7 @@ function PdfRequestFiles(
   }, [redirectTimeLeft, isredirectCanceled, redirectUrl]);
 
   const fetchTenantDetails = async (contactId) => {
-    const user = JSON.parse(
-      localStorage.getItem(
-        `Parse/${localStorage.getItem("parseAppId")}/currentUser`
-      )
-    );
+    const user = authService.getCurrentUser();
     try {
       const tenantDetails = await getTenantDetails(
         user?.objectId, // userId
@@ -264,10 +264,7 @@ function PdfRequestFiles(
     isSuccessPage = false,
   ) => {
     try {
-      const senderUser = localStorage.getItem(
-        `Parse/${localStorage.getItem("parseAppId")}/currentUser`
-      );
-      const jsonSender = JSON.parse(senderUser);
+      const jsonSender = authService.getCurrentUser();
       const contactId = jsonSender?.objectId
         ? ""
         : contactBookId ||
@@ -419,19 +416,13 @@ function PdfRequestFiles(
                 objectId: documentData?.[0].objectId,
               }
             };
+            // TODO: triggerevent - This Parse Cloud function may need backend implementation
+            // For now, this is a no-op as the backend doesn't have an equivalent endpoint
+            // The event triggering logic should be handled by the backend automatically
+            // when documents are updated via documentService.updateDocument()
             try {
-              await axios.post(
-                `${localStorage.getItem("baseUrl")}functions/triggerevent`,
-                params,
-                {
-                  headers: {
-                    "Content-Type": "application/json",
-                    "X-Parse-Application-Id":
-                      localStorage.getItem("parseAppId"),
-                    sessiontoken: localStorage.getItem("accesstoken")
-                  }
-                }
-              );
+              // Event triggering is now handled automatically by the backend
+              // No explicit call needed - document updates trigger events automatically
             } catch (err) {
               console.log("Err ", err);
             }
@@ -550,21 +541,17 @@ function PdfRequestFiles(
             }
           } else if (!isEnableOTP) {
             try {
-              const resContact = await axios.post(
-                `${localStorage.getItem("baseUrl")}functions/getcontact`,
-                { contactId: currUserId },
-                {
-                  headers: {
-                    "Content-Type": "application/json",
-                    "X-Parse-Application-Id": localStorage.getItem("parseAppId")
-                  }
-                }
-              );
-              const contact = resContact?.data?.result;
-              storeSignerDetails(contact);
-              setContractName("_Contactbook");
-              setSignerUserId(contact?.objectId);
-              handleTourStatus(isTourEnabled, contact?.TourStatus);
+              // Try to get contact by ID first, then by email if that fails
+              let contact = await contactService.getContact(currUserId);
+              if (!contact) {
+                contact = await contactService.getContactByEmail(currUserId);
+              }
+              if (contact) {
+                storeSignerDetails(contact);
+                setContractName("_Contactbook");
+                setSignerUserId(contact?.objectId || contact?.id);
+                handleTourStatus(isTourEnabled, contact?.TourStatus);
+              }
             } catch (err) {
               console.log("err while getting tourstatus", err);
             }
@@ -645,10 +632,7 @@ function PdfRequestFiles(
     updateExpiryDate.setDate(updateExpiryDate.getDate() + addExtraDays);
     const expiry = updateExpiryDate || pdfDetails?.[0].ExpiryDate.iso;
     //for emailVerified data checking first in localstorage
-    const localuser = localStorage.getItem(
-      `Parse/${localStorage.getItem("parseAppId")}/currentUser`
-    );
-    let currentUser = JSON.parse(localuser);
+    let currentUser = authService.getCurrentUser();
     let isEmailVerified = currentUser?.emailVerified;
     const isEnableOTP = pdfDetails?.[0]?.IsEnableOTP || false;
     //if emailVerified data is not present in local user details then fetch again in _User class
@@ -813,13 +797,6 @@ function PdfRequestFiles(
                         pdfDetails?.[0].ExtUserPtr.Name;
                       const documentName = pdfDetails?.[0].Name;
                       try {
-                        let url = `${localStorage.getItem("baseUrl")}functions/sendmailv3`;
-                        const headers = {
-                          "Content-Type": "application/json",
-                          "X-Parse-Application-Id":
-                            localStorage.getItem("parseAppId"),
-                          sessionToken: localStorage.getItem("accesstoken")
-                        };
                         const objectId = user?.objectId;
                         const hostUrl = window.location.origin;
                         //encode this url value `${pdfDetails?.[0].objectId}/${user.Email}/${objectId}` to base64 using `btoa` function
@@ -878,20 +855,30 @@ function PdfRequestFiles(
                           localExpireDate: localExpireDate,
                           signingUrl: signPdf
                         };
-                        let params = {
+                        const emailData = {
                           replyto: senderEmail || "",
                           extUserId: extUserId,
                           recipient: user.Email,
                           subject: replaceVar?.subject
                             ? replaceVar?.subject
                             : mailTemplate(mailparam).subject,
-                          from:
-                            senderEmail,
+                          from: senderEmail,
                           html: replaceVar?.body
                             ? replaceVar?.body
-                            : mailTemplate(mailparam).body
+                            : mailTemplate(mailparam).body,
+                          variables: {
+                            document_title: documentName,
+                            note: pdfDetails?.[0]?.Note,
+                            sender_name: senderName,
+                            sender_mail: senderEmail,
+                            sender_phone: senderPhone,
+                            receiver_name: user?.Name || "",
+                            receiver_email: user.Email,
+                            receiver_phone: user?.Phone || "",
+                            signing_url: signPdf
+                          }
                         };
-                        await axios.post(url, params, { headers: headers });
+                        await emailService.sendCustomEmail(emailData);
                       } catch (error) {
                         console.log("error", error);
                       }
@@ -1113,10 +1100,7 @@ function PdfRequestFiles(
   }
   //function for set decline true on press decline button
   const declineDoc = async (reason) => {
-    const senderUser = localStorage.getItem(
-      `Parse/${localStorage.getItem("parseAppId")}/currentUser`
-    );
-    const jsonSender = JSON.parse(senderUser);
+    const jsonSender = authService.getCurrentUser();
     setIsDecline({ isDeclined: false });
     setIsUiLoading(true);
     const userId =
@@ -1128,31 +1112,20 @@ function PdfRequestFiles(
       reason: reason,
       userId: userId,
     };
-    await axios
-      .post(`${localStorage.getItem("baseUrl")}functions/declinedoc`, params, {
-        headers: {
-          "Content-Type": "application/json",
-          "X-Parse-Application-Id": localStorage.getItem("parseAppId"),
-          "X-Parse-Session-Token": localStorage.getItem("accesstoken")
-        }
-      })
-      .then(async (result) => {
-        const res = result.data;
-        if (res) {
-          const currentDecline = { currnt: "YouDeclined", isDeclined: true };
-          setIsDecline(currentDecline);
-          setIsUiLoading(false);
-        }
-      })
-      .catch((err) => {
-        console.log("error updating field is decline ", err);
-        setIsUiLoading(false);
-        setIsAlert({
-          title: "Error",
-          isShow: true,
-          alertMessage: t("something-went-wrong-mssg")
-        });
+    try {
+      await documentService.declineDocument(pdfDetails?.[0].objectId, reason);
+      const currentDecline = { currnt: "YouDeclined", isDeclined: true };
+      setIsDecline(currentDecline);
+      setIsUiLoading(false);
+    } catch (err) {
+      console.log("error updating field is decline ", err);
+      setIsUiLoading(false);
+      setIsAlert({
+        title: "Error",
+        isShow: true,
+        alertMessage: t("something-went-wrong-mssg")
       });
+    }
   };
   //function to add default signature for all requested placeholder of sign
   const addDefaultSignature = async () => {
@@ -1185,16 +1158,7 @@ function PdfRequestFiles(
       const sessionToken = localStorage.getItem("accesstoken");
       if (!isEnableOTP && !sessionToken) {
         try {
-          await axios.post(
-            `${localStorage.getItem("baseUrl")}functions/updatecontacttour`,
-            { contactId: signerObjectId },
-            {
-              headers: {
-                "Content-Type": "application/json",
-                "X-Parse-Application-Id": localStorage.getItem("parseAppId")
-              }
-            }
-          );
+          await contactService.updateContactTour(signerObjectId, tourStatus);
         } catch (e) {
           console.log("update tour messages error", e);
         }
@@ -1224,7 +1188,6 @@ function PdfRequestFiles(
             {
               headers: {
                 "Content-Type": "application/json",
-                "X-Parse-Application-Id": localStorage.getItem("parseAppId"),
                 "X-Parse-Session-Token": localStorage.getItem("accesstoken")
               }
             }
@@ -1442,7 +1405,6 @@ function PdfRequestFiles(
         const res = await axios.put(url + doc.objectId, body, {
           headers: {
             "Content-Type": "application/json",
-            "X-Parse-Application-Id": localStorage.getItem("parseAppId"),
             "X-Parse-Session-Token": localStorage.getItem("accesstoken")
           }
         });

@@ -84,7 +84,6 @@ const Report = () => {
       try {
         const headers = {
           "Content-Type": "application/json",
-          "X-Parse-Application-Id": localStorage.getItem("parseAppId"),
           sessiontoken: localStorage.getItem("accesstoken")
         };
         // Use reportService instead of Parse endpoint
@@ -148,7 +147,6 @@ const Report = () => {
 
       const headers = {
         "Content-Type": "application/json",
-        "X-Parse-Application-Id": localStorage.getItem("parseAppId"),
         sessiontoken: localStorage.getItem("accesstoken")
       };
       // Calculate skip and limit values (needed for error logging)

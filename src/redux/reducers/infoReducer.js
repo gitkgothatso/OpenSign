@@ -7,7 +7,6 @@ const infoSlice = createSlice({
   reducers: {
     fetchAppInfo: () => {
       localStorage.setItem("baseUrl", `${appInfo.baseUrl}/`);
-      localStorage.setItem("parseAppId", appInfo.appId);
       localStorage.setItem("appLogo", appInfo.applogo);
       localStorage.removeItem("userSettings");
       localStorage.setItem("userSettings", JSON.stringify(appInfo.settings));

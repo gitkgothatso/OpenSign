@@ -128,6 +128,26 @@ export const contactService = {
   },
 
   /**
+   * Get contact by ID
+   * GET /api/v1/contacts/{id}
+   * @param {string} contactId - Contact ID
+   * @returns {Promise<Object|null>} Contact if exists, null otherwise
+   */
+  getContact: async (contactId) => {
+    try {
+      const response = await apiClient.get(`/contacts/${contactId}`);
+      return response.data;
+    } catch (error) {
+      // 404 means contact doesn't exist, which is fine - return null
+      if (error?.response?.status === 404) {
+        return null;
+      }
+      // Re-throw other errors
+      throw error;
+    }
+  },
+
+  /**
    * Get contact by email
    * @param {string} email - Contact email
    * @returns {Promise<Object|null>} Contact if exists, null otherwise
@@ -226,6 +246,30 @@ export const contactService = {
       };
     }
     return response.data;
+  },
+
+  /**
+   * Update contact tour status
+   * Note: This may update the user's tour status if the backend handles it that way
+   * Replaces: Parse.Cloud.run('updatecontacttour', params)
+   * 
+   * @param {string} contactId - Contact ID (or User ID if backend uses user endpoint)
+   * @param {Object} tourStatus - Tour status data
+   * @returns {Promise<Object>} Updated contact/user
+   */
+  updateContactTour: async (contactId, tourStatus) => {
+    // Try contact endpoint first, fallback to user endpoint if needed
+    try {
+      const response = await apiClient.put(`/contacts/${contactId}/tour`, { tourStatus });
+      return response.data;
+    } catch (error) {
+      // If contact endpoint doesn't exist, try user endpoint
+      if (error.response?.status === 404) {
+        const response = await apiClient.put(`/users/${contactId}/tour-status`, { tourStatus });
+        return response.data;
+      }
+      throw error;
+    }
   }
 };
 

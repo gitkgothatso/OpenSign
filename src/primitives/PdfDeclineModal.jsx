@@ -2,17 +2,14 @@ import React, { useState } from "react";
 import "../styles/signature.css";
 import { useTranslation } from "react-i18next";
 import Loader from "./Loader";
+import authService from "../services/authService";
 
 function CustomModal(props) {
   const { t } = useTranslation();
   const [reason, setReason] = useState("");
   const [isExtendExpiry, setIsExtendExpiry] = useState(false);
   const [expiryDate, setExpiryDate] = useState("");
-  const localuser = localStorage.getItem(
-    `Parse/${localStorage.getItem("parseAppId")}/currentUser`
-  );
-
-  const currentUser = JSON.parse(localuser);
+  const currentUser = authService.getCurrentUser();
   const isCreator = props?.doc
     ? props?.doc?.CreatedBy?.objectId === currentUser?.objectId &&
       localStorage.getItem("_user_role") !== "Guest"

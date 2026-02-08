@@ -173,6 +173,33 @@ export const documentService = {
   signPdf: async (params) => {
     const response = await apiClient.post('/documents/sign', params);
     return response.data;
+  },
+
+  /**
+   * Decline a document
+   * POST /api/v1/documents/{id}/decline
+   * Replaces: Parse.Cloud.run('declinedoc', params)
+   * 
+   * @param {string} documentId - Document ID
+   * @param {string} reason - Decline reason (optional)
+   * @returns {Promise<Object>} Updated document
+   */
+  declineDocument: async (documentId, reason = '') => {
+    const response = await apiClient.post(`/documents/${documentId}/decline`, { reason });
+    return response.data;
+  },
+
+  /**
+   * Get signers for a document
+   * The signers are included in the document response
+   * Replaces: Parse.Cloud.run('getsigners', {documentId})
+   * 
+   * @param {string} documentId - Document ID
+   * @returns {Promise<Array>} Array of signers
+   */
+  getSigners: async (documentId) => {
+    const document = await documentService.getDocument(documentId);
+    return document.signers || [];
   }
 };
 

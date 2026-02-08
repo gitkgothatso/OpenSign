@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
+import { documentService } from "../services/documentService";
 import SuggestionInput from "./shared/fields/SuggestionInput";
 import Loader from "../primitives/Loader";
 import { useTranslation } from "react-i18next";
@@ -188,25 +189,24 @@ const BulkSendUi = (props) => {
   };
 
   const batchQuery = async (Documents) => {
-    const token =
-          { "X-Parse-Session-Token": localStorage.getItem("accesstoken") };
-    const functionsUrl = `${localStorage.getItem("baseUrl")}functions/batchdocuments`;
-    const headers = {
-      "Content-Type": "application/json",
-      "X-Parse-Application-Id": localStorage.getItem("parseAppId"),
-      ...token,
-    };
-    const params = { Documents: JSON.stringify(Documents) };
+    // Parse Documents array (it might be a JSON string)
+    const documentsArray = Array.isArray(Documents) ? Documents : JSON.parse(Documents);
+    
     try {
-      const res = await axios.post(functionsUrl, params, { headers: headers });
-      if (res.data && res.data.result) {
-        props.handleClose("success", Documents?.length);
+      // Create documents one by one (backend doesn't have batch endpoint yet)
+      // TODO: Add batch document creation endpoint to backend for better performance
+      const results = await Promise.all(
+        documentsArray.map(doc => documentService.saveDocument(doc))
+      );
+      
+      if (results && results.length > 0) {
+        props.handleClose("success", documentsArray.length);
       }
     } catch (err) {
       const message =
         err?.response?.data?.error || err?.message || "something went wrong.";
       console.error("Error sending documents:", message);
-        props.handleClose("error", 0, message);
+      props.handleClose("error", 0, message);
     } finally {
       setIsSubmit(false);
     }

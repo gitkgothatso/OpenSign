@@ -120,36 +120,59 @@ const UserList = () => {
         setIsAdmin(admin);
       }
 
-      // Get tenantId - handle multiple formats
-      let tenantIdStr = "";
+      // Get organizationId/tenantId - match original OpenSign: extUser.OrganizationId.objectId
+      // Original OpenSign directly uses: extUser.OrganizationId.objectId
+      let orgIdStr = "";
       
-      // Try from localStorage first (set during login)
-      tenantIdStr = localStorage.getItem("TenantId") || "";
-      
-      // If not in localStorage, try from extUser object
-      if (!tenantIdStr && extUser) {
-        // Try capitalized TenantId (object with objectId)
-        if (extUser?.TenantId) {
-          tenantIdStr = typeof extUser.TenantId === 'string' 
+      // Try from extUser object first (matches original OpenSign - this is the primary source)
+      if (extUser) {
+        // Original OpenSign uses: extUser.OrganizationId.objectId
+        if (extUser?.OrganizationId) {
+          orgIdStr = typeof extUser.OrganizationId === 'string' 
+            ? extUser.OrganizationId 
+            : extUser.OrganizationId?.objectId || extUser.OrganizationId?.id || "";
+        }
+        // Also try TenantId (for compatibility with some data)
+        else if (extUser?.TenantId) {
+          orgIdStr = typeof extUser.TenantId === 'string' 
             ? extUser.TenantId 
             : extUser.TenantId?.objectId || extUser.TenantId?.id || "";
         }
-        // Try lowercase tenantId (object with objectId)
-        else if (extUser?.tenantId) {
-          tenantIdStr = typeof extUser.tenantId === 'string' 
-            ? extUser.tenantId 
-            : extUser.tenantId?.objectId || extUser.tenantId?.id || "";
+      }
+      
+      // Fallback: Try from localStorage (set during login)
+      if (!orgIdStr) {
+        orgIdStr = localStorage.getItem("TenantId") || localStorage.getItem("OrganizationId") || "";
+      }
+
+      // If still not found, try fetching current user profile (backend will handle fallback to _User.TenantId)
+      if (!orgIdStr) {
+        try {
+          const currentUser = await userService.getCurrentUser();
+          if (currentUser) {
+            // Try multiple possible formats for organizationId/tenantId
+            orgIdStr = currentUser?.OrganizationId?.objectId || 
+                      currentUser?.OrganizationId || 
+                      currentUser?.TenantId?.objectId || 
+                      currentUser?.TenantId || 
+                      currentUser?.organizationId?.objectId || 
+                      currentUser?.organizationId ||
+                      currentUser?.tenantId?.objectId || 
+                      currentUser?.tenantId || "";
+            
+            if (orgIdStr) {
+              // Store in localStorage for future use
+              localStorage.setItem("TenantId", orgIdStr);
+            }
+          }
+        } catch (err) {
+          console.error("Error fetching current user for OrganizationId:", err);
         }
       }
 
-      if (!tenantIdStr) {
-        console.error("TenantId not found");
-        showAlert("danger", t("something-went-wrong-mssg"));
-        setIsLoader(false);
-        return;
-      }
-
-      const res = await getUserListByOrg(tenantIdStr);
+      // Call the API - backend will extract from contracts_Users or fallback to _User.TenantId
+      // If orgIdStr is provided, use it; otherwise backend will auto-detect
+      const res = await getUserListByOrg(orgIdStr || null);
       const _userRes = JSON.parse(JSON.stringify(res));
       setUserList(_userRes);
     } catch (err) {

@@ -1,17 +1,15 @@
-import axios from 'axios';
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080/api/v1';
+import apiClient from '../config/api';
 
 export const storageService = {
   // Get tenant credits
   async getTenantCredits(tenantId) {
-    const response = await axios.get(`${API_URL}/storage/credits/${tenantId}`);
+    const response = await apiClient.get(`/storage/credits/${tenantId}`);
     return response.data;
   },
 
   // Update tenant storage usage
   async updateTenantCredits(tenantId, usedStorage) {
-    const response = await axios.put(`${API_URL}/storage/credits/${tenantId}`, {
+    const response = await apiClient.put(`/storage/credits/${tenantId}`, {
       usedStorage
     });
     return response.data;
@@ -19,7 +17,7 @@ export const storageService = {
 
   // Create tenant credits
   async createTenantCredits(tenantId, usedStorage) {
-    const response = await axios.post(`${API_URL}/storage/credits`, {
+    const response = await apiClient.post(`/storage/credits`, {
       tenantId,
       usedStorage
     });
@@ -28,7 +26,7 @@ export const storageService = {
 
   // Save data file record
   async saveDataFile(fileUrl, fileSize, tenantId, userId) {
-    const response = await axios.post(`${API_URL}/storage/files`, {
+    const response = await apiClient.post(`/storage/files`, {
       fileUrl,
       fileSize,
       tenantId,

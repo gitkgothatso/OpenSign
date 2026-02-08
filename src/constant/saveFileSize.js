@@ -1,75 +1,67 @@
-import axios from "axios";
 import { storageService } from "../services/storageService";
-import { serverUrl_fn } from "./appinfo";
-const parseAppId = process.env.REACT_APP_APPID
-  ? process.env.REACT_APP_APPID
-  : "opensign";
-const serverUrl = serverUrl_fn();
-const commonheader = {
-  "Content-Type": "application/json",
-  "X-Parse-Application-Id": parseAppId
-};
 export const SaveFileSize = async (size, imageUrl, tenantId, userId) => {
   // Skip if tenantId is not provided (optional tracking)
-  if (!tenantId || tenantId.trim() === "") {
+  if (!tenantId || (typeof tenantId === 'string' && tenantId.trim() === "")) {
     console.log("SaveFileSize: tenantId not provided, skipping storage tracking");
     return;
   }
 
-  //checking server url and save file's size
-  const tenantPtr = {
-    __type: "Pointer",
-    className: "partners_Tenant",
-    objectId: tenantId
-  };
-  const UserPtr = userId && {
-    __type: "Pointer",
-    className: "_User",
-    objectId: userId
-  };
-  const _tenantPtr = JSON.stringify(tenantPtr);
+  // Extract tenantId as string (handle both Parse pointer object and plain string)
+  const tenantIdStr = typeof tenantId === 'string' 
+    ? tenantId 
+    : (tenantId?.objectId || tenantId?.id || tenantId);
+  
+  if (!tenantIdStr) {
+    console.log("SaveFileSize: Could not extract tenantId, skipping storage tracking");
+    return;
+  }
+  
   try {
-    const response = await storageService.getTenantCredits(tenantPtr.__type === 'Pointer' ? tenantPtr.objectId : tenantPtr);
-    let data;
-    if (response && response.length > 0) {
-      data = {
-        usedStorage: response[0].usedStorage
-          ? response[0].usedStorage + size
-          : size
-      };
+    const response = await storageService.getTenantCredits(tenantIdStr);
+    // Backend returns a single object with: { id, tenantId, usedStorage, totalStorage }
+    if (response && (response.id || response.tenantId)) {
+      const newUsedStorage = (response.usedStorage || 0) + size;
       await storageService.updateTenantCredits(
-        response.objectId || response[0].objectId,
-        data.usedStorage
+        tenantIdStr,
+        newUsedStorage
       );
     } else {
-      data = { usedStorage: size, PartnersTenant: tenantPtr };
       await storageService.createTenantCredits(
-        tenantPtr.__type === 'Pointer' ? tenantPtr.objectId : tenantPtr,
-        data.usedStorage
+        tenantIdStr,
+        size
       );
     }
   } catch (err) {
-    console.log("err in save usage", err);
+    // If 404, create new credits record
+    if (err?.response?.status === 404) {
+      try {
+        await storageService.createTenantCredits(tenantIdStr, size);
+      } catch (createErr) {
+        console.log("err in create tenant credits", createErr);
+      }
+    } else {
+      console.log("err in save usage", err);
+    }
   }
-  saveDataFile(size, imageUrl, tenantPtr, UserPtr);
+  
+  // Extract userId as string (handle both Parse pointer object and plain string)
+  const userIdStr = userId 
+    ? (typeof userId === 'string' ? userId : (userId?.objectId || userId?.id || userId))
+    : null;
+  
+  saveDataFile(size, imageUrl, tenantIdStr, userIdStr);
 };
 
 //function for save fileUrl and file size in particular client db class partners_DataFiles
-const saveDataFile = async (size, imageUrl, tenantPtr, UserId) => {
-  const data = {
-    FileUrl: imageUrl,
-    FileSize: size,
-    TenantPtr: tenantPtr,
-    ...(UserId ? { UserId: UserId } : {})
-  };
+const saveDataFile = async (size, imageUrl, tenantId, userId) => {
   try {
     await storageService.saveDataFile(
-      data.FileUrl,
-      data.FileSize,
-      data.TenantPtr.__type === 'Pointer' ? data.TenantPtr.objectId : data.TenantPtr,
-      data.UserId
+      imageUrl,
+      size,
+      tenantId,
+      userId
     );
   } catch (err) {
-    console.log("err in save usage ", err);
+    console.log("err in save data file", err);
   }
 };

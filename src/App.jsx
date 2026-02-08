@@ -48,8 +48,6 @@ function App() {
   const [isloading, setIsLoading] = useState(true);
   useEffect(() => {
     // initialize creds
-    const id = process.env.REACT_APP_APPID ?? "opensign";
-    localStorage.setItem("parseAppId", id);
     localStorage.setItem("baseUrl", `${serverUrl_fn()}/`);
     hideUpgradeProgress();
     localStorage.removeItem("showUpgradeProgress");

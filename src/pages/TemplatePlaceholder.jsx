@@ -8,6 +8,7 @@ import Tour from "../primitives/Tour";
 import SignerListPlace from "../components/pdf/SignerListPlace";
 import Header from "../components/pdf/PdfHeader";
 import WidgetNameModal from "../components/pdf/WidgetNameModal";
+import authService from "../services/authService";
 import {
   copytoData,
   pdfNewWidthFun,
@@ -161,10 +162,7 @@ const TemplatePlaceholder = () => {
   const [copied, setCopied] = useState(false);
   const [isUseTemplate, setIsUseTemplate] = useState(false);
   const [prevRole, setPrevRole] = useState("");
-  const currentUser = localStorage.getItem(
-    `Parse/${localStorage.getItem("parseAppId")}/currentUser`
-  );
-  const user = currentUser && JSON.parse(currentUser);
+  const user = authService.getCurrentUser();
   useEffect(() => {
     dispatch(resetWidgetState([]));
     fetchTemplate();
@@ -195,11 +193,7 @@ const TemplatePlaceholder = () => {
 
   //function to fetch tenant Details
   const fetchTenantDetails = async () => {
-    const user = JSON.parse(
-      localStorage.getItem(
-        `Parse/${localStorage.getItem("parseAppId")}/currentUser`
-      )
-    );
+    const user = authService.getCurrentUser();
     if (user) {
       try {
         const tenantDetails = await getTenantDetails(user?.objectId);
@@ -238,21 +232,9 @@ const TemplatePlaceholder = () => {
   const fetchTemplate = async () => {
     try {
       const tenantSignTypes = await fetchTenantDetails();
-      const params = { templateId: templateId };
-      const templateDeatils = await axios.post(
-        `${localStorage.getItem("baseUrl")}functions/getTemplate`,
-        params,
-        {
-          headers: {
-            "Content-Type": "application/json",
-            "X-Parse-Application-Id": localStorage.getItem("parseAppId"),
-            sessiontoken: localStorage.getItem("accesstoken")
-          }
-        }
-      );
-      const documentData =
-        templateDeatils.data && templateDeatils.data.result
-          ? [templateDeatils.data.result]
+      const templateDetails = await templateService.getTemplate(templateId);
+      const documentData = templateDetails
+          ? [templateDetails]
           : [];
 
       if (documentData && documentData.length > 0) {
@@ -1090,17 +1072,7 @@ const TemplatePlaceholder = () => {
         updatedTourStatus = [{ template: true }];
       }
       try {
-        await axios.put(
-          `${localStorage.getItem("baseUrl")}classes/contracts_Users/${signerUserId}`,
-          { TourStatus: updatedTourStatus },
-          {
-            headers: {
-              "Content-Type": "application/json",
-              "X-Parse-Application-Id": localStorage.getItem("parseAppId"),
-              sessionToken: localStorage.getItem("accesstoken")
-            }
-          }
-        );
+        await userService.updateTourStatus(signerUserId, updatedTourStatus);
         setCheckTourStatus(true);
       } catch (err) {
         console.log("axois err ", err);

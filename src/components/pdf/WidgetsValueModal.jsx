@@ -1,6 +1,7 @@
 import { forwardRef, useEffect, useMemo, useRef, useState } from "react";
 import ModalUi from "../../primitives/ModalUi";
 import { useTranslation } from "react-i18next";
+import authService from "../../services/authService";
 import { removeBackground } from "@imgly/background-removal";
 import {
   changeDateToMomentFormat,
@@ -131,12 +132,9 @@ function WidgetsValueModal(props) {
       : ""
   );
   const accesstoken = localStorage.getItem("accesstoken") || "";
-  const senderUser = localStorage.getItem(
-    `Parse/${localStorage.getItem("parseAppId")}/currentUser`
-  );
   const kiosk_signer =
     props?.kiosk_signer || JSON.parse(localStorage.getItem("kiosk_signer"));
-  const jsonSender = senderUser && JSON.parse(senderUser);
+  const jsonSender = authService.getCurrentUser();
   const currentUserName = jsonSender && jsonSender?.name;
   const type = currWidgetsDetails?.type;
   const widgetTypeTranslation = t(`widgets-name.${currWidgetsDetails?.type}`);

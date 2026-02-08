@@ -976,22 +976,10 @@ export const createDocument = async (
     if (AutomaticReminders && reminderCount > 15) {
       return { status: "error", id: "only-15-reminder-allowed" };
     }
-    const url = `${localStorage.getItem("baseUrl")}classes/contracts_Document`;
-    const token = {
-      "X-Parse-Session-Token": localStorage.getItem("accesstoken")
-    };
     try {
-      const res = await axios.post(url, data, {
-        headers: {
-          "Content-Type": "application/json",
-          "X-Parse-Application-Id": localStorage.getItem("parseAppId"),
-          ...token
-        }
-      });
-      if (res) {
-        const result = res.data;
-
-        return { status: "success", id: result.objectId, data: result };
+      const result = await documentService.saveDocument(data);
+      if (result) {
+        return { status: "success", id: result.objectId || result.id, data: result };
       }
     } catch (err) {
       const message =
@@ -2424,30 +2412,13 @@ export const placeholderHeight = (pos) => {
 
 //function for getting contracts_contactbook details
 export const contactBook = async (objectId) => {
-  const result = await axios
-    .get(
-      `${localStorage.getItem(
-        "baseUrl"
-      )}classes/contracts_Contactbook?where={"objectId":"${objectId}"}`,
-      {
-        headers: {
-          "Content-Type": "application/json",
-          "X-Parse-Application-Id": localStorage.getItem("parseAppId"),
-          "X-Parse-Session-Token": localStorage.getItem("accesstoken")
-        }
-      }
-    )
-    .then((Listdata) => {
-      const json = Listdata.data;
-      const res = json.results;
-      return res;
-    })
-
-    .catch((err) => {
-      console.log("Err in contracts_Contactbook class ", err);
-      return "Error: Something went wrong!";
-    });
-  return result;
+  try {
+    const contact = await contactService.getContact(objectId);
+    return contact ? [contact] : [];
+  } catch (err) {
+    console.log("Err in contracts_Contactbook class ", err);
+    return "Error: Something went wrong!";
+  }
 };
 
 //function for getting document details from contract_Documents class
@@ -2632,8 +2603,24 @@ export const getFileName = (fileUrl) => {
 
 //fetch tenant app logo from `partners_Tenant` class by domain name
 export const getAppLogo = async () => {
+  // Normalize domain: remove port for standard ports (80, 443, 3000, 8080, etc.)
+  // This matches original OpenSign behavior where tenants are stored without ports
+  const host = window.location.host;
+  let domain = host;
+  
+  // Remove port if it's a standard development/production port
+  // Keep port only for non-standard ports (e.g., custom ports like 3001, 8081)
+  const portMatch = host.match(/^(.+):(\d+)$/);
+  if (portMatch) {
+    const [, hostname, port] = portMatch;
+    const portNum = parseInt(port, 10);
+    // Remove port for standard HTTP/HTTPS ports or common dev ports
+    if (portNum === 80 || portNum === 443 || portNum === 3000 || portNum === 8080 || 
+        hostname === 'localhost' || hostname === '127.0.0.1') {
+      domain = hostname;
+    }
+  }
 
-  const domain = window.location.host;
   let logo = appInfo.applogo;
   let userStatus = "exist"; // Default to "exist" for safety
 
@@ -4156,14 +4143,7 @@ export const sendEmailToSigners = async (
         } else {
           data = { SendMail: true };
         }
-        const docUrl = `${localStorage.getItem("baseUrl")}classes/contracts_Document`;
-        await axios.put(`${docUrl}/${pdfDetails[0]?.objectId}`, data, {
-          headers: {
-            "Content-Type": "application/json",
-            "X-Parse-Application-Id": localStorage.getItem("parseAppId"),
-            "X-Parse-Session-Token": sessiontoken
-          }
-        });
+        await documentService.updateDocument(pdfDetails[0]?.objectId, data);
       } catch (error) {
         const err = error?.response?.data?.error || error?.message;
         console.error("Error while updating doc: ", err);

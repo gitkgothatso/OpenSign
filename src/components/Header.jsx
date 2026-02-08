@@ -75,7 +75,6 @@ const Header = ({ isConsole, setIsLoggingOut }) => {
     let defaultmenuid = localStorage.getItem("defaultmenuid");
     let PageLanding = localStorage.getItem("PageLanding");
     let baseUrl = localStorage.getItem("baseUrl");
-    let appid = localStorage.getItem("parseAppId");
     let favicon = localStorage.getItem("favicon");
 
     localStorage.clear();
@@ -85,7 +84,6 @@ const Header = ({ isConsole, setIsLoggingOut }) => {
     localStorage.setItem("PageLanding", PageLanding);
     localStorage.setItem("userSettings", appdata);
     localStorage.setItem("baseUrl", baseUrl);
-    localStorage.setItem("parseAppId", appid);
     localStorage.setItem("favicon", favicon);
     setIsLoggingOut(false);
     navigate("/");

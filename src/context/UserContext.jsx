@@ -27,13 +27,19 @@ export const UserProvider = ({ children }) => {
 
       const response = await apiClient.get('/users/profile/me');
       setUser(response.data);
-      
-      // Sync Parse SDK authentication for backward compatibility
-      // This ensures Parse queries work during migration
-      await // JWT auth sync handled by apiClient interceptor
       setError(null);
     } catch (err) {
-      console.warn('UserContext: Could not fetch user details:', err.message);
+      // Handle authentication errors (401/403) by clearing invalid tokens
+      if (err.response?.status === 401 || err.response?.status === 403) {
+        // Token is invalid or expired - clear it
+        localStorage.removeItem('jwtToken');
+        localStorage.removeItem('userId');
+        localStorage.removeItem('username');
+        localStorage.removeItem('userEmail');
+        console.warn('UserContext: Invalid token, cleared from storage');
+      } else {
+        console.warn('UserContext: Could not fetch user details:', err.message);
+      }
       setError(err);
       // Don't block UI if user fetch fails - set user to null
       setUser(null);

@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { userService } from "../../services/userService";
+import { authService } from "../../services/authService";
 import { buildDownloadFilename } from "../../utils";
 import { useTranslation } from "react-i18next";
 import { Tooltip as ReactTooltip } from "react-tooltip";
@@ -23,8 +24,8 @@ const FilenameFormatSelector = ({ fileNameFormat, setFileNameFormat }) => {
   const sampleDocName = "Agreement";
   const [value, setValue] = useState(fileNameFormat);
   const [error, setError] = useState("");
-  const currentUser = Parse?.User?.current();
-  const email = currentUser?.get("email") || "user@example.com";
+  const currentUser = authService.getCurrentUser();
+  const email = currentUser?.email || localStorage.getItem('userEmail') || "user@example.com";
 
   // Load preference from contracts_User
   useEffect(() => {
@@ -33,7 +34,7 @@ const FilenameFormatSelector = ({ fileNameFormat, setFileNameFormat }) => {
         if (!currentUser) return;
         const rec = await userService.getCurrentUser();
         if (rec) {
-          const fmt = rec.DownloadFilenameFormat || rec.get?.("DownloadFilenameFormat");
+          const fmt = rec.DownloadFilenameFormat;
           if (fmt) setValue(fmt);
         }
       } catch (e) {

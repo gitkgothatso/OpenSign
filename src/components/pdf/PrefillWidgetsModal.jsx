@@ -19,6 +19,7 @@ import { useTranslation } from "react-i18next";
 import moment from "moment";
 import AsyncSelect from "react-select/async";
 import axios from "axios";
+import { contactService } from "../../services/contactService";
 import AddContact from "../../primitives/AddContact";
 import Loader from "../../primitives/Loader";
 import { useDispatch, useSelector } from "react-redux";
@@ -582,19 +583,9 @@ function PrefillWidgetModal(props) {
   //`loadOptions` function to use show all list of signer in dropdown
   const loadOptions = async (inputValue) => {
     try {
-      const baseURL = localStorage.getItem("baseUrl");
-      const url = `${baseURL}functions/getsigners`;
-      const token = {
-        "X-Parse-Session-Token": localStorage.getItem("accesstoken")
-      };
-      const headers = {
-        "Content-Type": "application/json",
-        "X-Parse-Application-Id": localStorage.getItem("parseAppId"),
-        ...token
-      };
-      const search = inputValue;
-      const axiosRes = await axios.post(url, { search }, { headers });
-      const contactRes = axiosRes?.data?.result || [];
+      // Use contactService to search contacts instead of Parse function
+      const searchResults = await contactService.searchContacts(inputValue);
+      const contactRes = searchResults?.content || [];
       if (contactRes) {
         const res = JSON.parse(JSON.stringify(contactRes));
         const result = res;
