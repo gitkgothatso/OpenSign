@@ -193,14 +193,13 @@ const BulkSendUi = (props) => {
     const documentsArray = Array.isArray(Documents) ? Documents : JSON.parse(Documents);
     
     try {
-      // Create documents one by one (backend doesn't have batch endpoint yet)
-      // TODO: Add batch document creation endpoint to backend for better performance
-      const results = await Promise.all(
-        documentsArray.map(doc => documentService.saveDocument(doc))
-      );
+      // Use batch endpoint for better performance
+      const result = await documentService.createBatchDocuments(documentsArray);
       
-      if (results && results.length > 0) {
-        props.handleClose("success", documentsArray.length);
+      if (result && result.success && result.created > 0) {
+        props.handleClose("success", result.created);
+      } else {
+        props.handleClose("error", 0, "Failed to create documents");
       }
     } catch (err) {
       const message =

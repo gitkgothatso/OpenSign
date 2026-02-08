@@ -142,6 +142,44 @@ export const authService = {
       newPassword
     });
     return response.data;
+  },
+
+  /**
+   * Login with OTP (passwordless login)
+   * Replaces: Parse.Cloud.run('AuthLoginAsMail', { email, otp })
+   * @param {string} email - User email
+   * @param {string|number} otp - OTP code (6 digits)
+   * @returns {Promise<Object>} User session data with JWT token
+   */
+  loginWithOtp: async (email, otp) => {
+    const response = await apiClient.post('/auth/login-with-otp', {
+      email: email?.toLowerCase()?.replace(/\s/g, ''),
+      otp: otp.toString()
+    });
+    
+    // Response format: { userId, username, email, jwtToken }
+    const authData = response.data;
+    
+    // Store JWT token
+    if (authData.jwtToken) {
+      localStorage.setItem('jwtToken', authData.jwtToken);
+    }
+    
+    // Store user information (Parse-compatible format for migration)
+    const userInfo = {
+      objectId: authData.userId,
+      username: authData.username,
+      email: authData.email,
+      sessionToken: authData.jwtToken, // For compatibility
+      emailVerified: true
+    };
+    localStorage.setItem('UserInformation', JSON.stringify(userInfo));
+    
+    // Store in Parse-compatible format for gradual migration
+    const parseId = localStorage.getItem('parseAppId') || 'opensign';
+    localStorage.setItem(`Parse/${parseId}/currentUser`, JSON.stringify(userInfo));
+    
+    return userInfo;
   }
 };
 

@@ -160,33 +160,13 @@ function GuestLogin() {
     if (OTP) {
       setLoading(true);
       try {
-        let url = `${serverUrl}functions/AuthLoginAsMail`;
-        const headers = {
-          "Content-Type": "application/json"
-        };
-        let body = {
-          email: email?.toLowerCase()?.replace(/\s/g, ""),
-          otp: OTP
-        };
-        let user = await axios.post(url, body, { headers: headers });
-        if (user.data.result === "Invalid Otp") {
-          alert(t("invalid-otp"));
-          setLoading(false);
-        } else if (user.data.result === "user not found!") {
-          alert(t("user-not-found"));
-          setLoading(false);
-        } else {
-          let _user = user.data.result;
-          // JWT auth - no need for Parse.User.become()
-          const parseId = localStorage.getItem("parseAppId");
-          if (_user) {
-            localStorage.setItem("accesstoken", _user?.sessionToken);
-            localStorage.setItem("UserInformation", JSON.stringify(_user));
-            localStorage.setItem(
-              `Parse/${parseId}/currentUser`,
-              JSON.stringify(_user)
-            );
-          }
+        // Use authService instead of direct Parse endpoint
+        const _user = await authService.loginWithOtp(email, OTP);
+        
+        if (_user) {
+          localStorage.setItem("accesstoken", _user?.sessionToken || _user?.jwtToken);
+          // User information already stored by authService.loginWithOtp
+        }
           const contractUserDetails = await contractUsers();
           if (contractUserDetails && contractUserDetails.length > 0) {
             localStorage.setItem(
