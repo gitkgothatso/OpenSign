@@ -166,7 +166,6 @@ function GuestLogin() {
         if (_user) {
           localStorage.setItem("accesstoken", _user?.sessionToken || _user?.jwtToken);
           // User information already stored by authService.loginWithOtp
-        }
           const contractUserDetails = await contractUsers();
           if (contractUserDetails && contractUserDetails.length > 0) {
             localStorage.setItem(

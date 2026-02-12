@@ -382,7 +382,16 @@ function PlaceHolderSign() {
                 blockColor: x.blockColor
               };
             } else {
-              return { Role: x.Role, Id: x.Id, blockColor: x.blockColor };
+              // When no matching signer, include email from placeholder if available
+              return { 
+                Role: x.Role, 
+                Id: x.Id, 
+                blockColor: x.blockColor,
+                email: x.email || x.Email || "",
+                Email: x.Email || x.email || "",
+                signerPtr: x.signerPtr,
+                signerObjId: x.signerObjId
+              };
             }
           });
           if (prefillPlaceholder) {
@@ -1302,7 +1311,8 @@ function PlaceHolderSign() {
     let senderEmail =
       pdfDetails?.[0]?.ExtUserPtr?.Email;
     let senderPhone = pdfDetails?.[0]?.ExtUserPtr?.Phone;
-    let signerMail = signersdata.slice();
+    // Filter out prefill signers - they don't need emails sent
+    let signerMail = signersdata.filter((x) => x.Role !== "prefill");
     if (pdfDetails?.[0]?.SendinOrder && pdfDetails?.[0]?.SendinOrder === true) {
       signerMail.splice(1);
     }
@@ -1310,7 +1320,8 @@ function PlaceHolderSign() {
     for (let i = 0; i < signerMail.length; i++) {
       try {
         // Extract recipient email early - try multiple paths to find email
-        const recipientEmailRaw = 
+        // First try from signer data
+        let recipientEmailRaw = 
           signerMail[i]?.Email || 
           signerMail[i]?.email ||
           signerMail[i]?.signerPtr?.Email ||
@@ -1318,20 +1329,31 @@ function PlaceHolderSign() {
           (signerMail[i]?.signerPtr && typeof signerMail[i].signerPtr === 'object' && signerMail[i].signerPtr.Email) ||
           "";
         
+        // If still no email, try to find it from the corresponding placeholder
+        if (!recipientEmailRaw || recipientEmailRaw.trim() === "") {
+          const signerId = signerMail[i]?.Id;
+          if (signerId && signerPos && Array.isArray(signerPos)) {
+            const matchingPlaceholder = signerPos.find(p => p.Id === signerId && p.Role !== "prefill");
+            if (matchingPlaceholder) {
+              recipientEmailRaw = matchingPlaceholder.email || matchingPlaceholder.Email || "";
+            }
+          }
+        }
+        
         const recipientEmail = recipientEmailRaw?.trim() || "";
         
         if (!recipientEmail || recipientEmail.length === 0) {
-          console.warn(`Skipping email send for signer ${i}: no email address`, {
-            signerIndex: i,
-            signerData: signerMail[i],
-            availableFields: Object.keys(signerMail[i] || {}),
-            emailPaths: {
-              Email: signerMail[i]?.Email,
-              email: signerMail[i]?.email,
-              signerPtrEmail: signerMail[i]?.signerPtr?.Email,
-              signerPtremail: signerMail[i]?.signerPtr?.email
-            }
-          });
+          // Only log if this is unexpected (signer should have email but doesn't)
+          // Prefill signers and placeholders without emails are expected to be skipped
+          const signerRole = signerMail[i]?.Role;
+          const isPrefill = signerRole === "prefill";
+          
+          // Only warn if it's not a prefill signer (prefill signers don't need emails)
+          if (!isPrefill) {
+            // Use console.debug instead of console.warn for less verbosity
+            // This is expected in some cases (e.g., placeholder without email)
+            console.debug(`Skipping email send for signer ${i} (${signerMail[i]?.Name || 'unnamed'}): no email address available`);
+          }
           continue;
         }
         
@@ -1342,7 +1364,8 @@ function PlaceHolderSign() {
           continue;
         }
         
-        const objectId = signerMail[i].objectId;
+        // Get objectId - use signerObjId as fallback if objectId is missing (for placeholders without matching signers)
+        const objectId = signerMail[i].objectId || signerMail[i].signerObjId || "";
         const hostUrl = window.location.origin;
         //encode this url value `${pdfDetails?.[0].objectId}/${recipientEmail}/${objectId}` to base64 using `btoa` function
         const encodeBase64 = btoa(

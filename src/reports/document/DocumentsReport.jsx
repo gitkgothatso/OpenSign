@@ -7,7 +7,7 @@ import ModalUi from "../../primitives/ModalUi";
 import Alert from "../../primitives/Alert";
 import Tooltip from "../../primitives/Tooltip";
 import ShareButton from "../../primitives/ShareButton";
-import { saveAsTemplate, recreateDocument } from "../../services/documentService";
+import documentService, { saveAsTemplate, recreateDocument } from "../../services/documentService";
 import templateService from "../../services/templateService";
 import authService from "../../services/authService";
 import { emailService } from "../../services/emailService";
@@ -304,6 +304,10 @@ const DocumentsReport = (props) => {
     } else if (act.action === "option") {
       setIsOption({ [item.objectId]: !isOption[item.objectId] });
     } else if (act.action === "resend") {
+      // Reset state when opening resend modal
+      setIsNextStep({});
+      setUserDetails({});
+      setMail({ subject: "", body: "" });
       setIsResendMail({ [item.objectId]: true });
     } else if (act.action === "rename") {
       setIsModal({ [`rename_${item.objectId}`]: true });
@@ -346,24 +350,14 @@ const DocumentsReport = (props) => {
     setActLoader({ [`${item.objectId}`]: true });
     try {
       await documentService.archiveDocument(item.objectId);
-      /* Original Parse API code removed */
-      /*
-      const res = await axios.put(url + item.objectId, body, {
-        headers: {
-          "Content-Type": "application/json",
-          "X-Parse-Session-Token": localStorage.getItem("accesstoken")
-        }
-      });
-      if (res.data && res.data.updatedAt) {
-        setActLoader({});
-        showAlert("success", t("record-delete-alert"));
-        const upldatedList = props.List.filter(
-          (x) => x.objectId !== item.objectId
-        );
-        props.setList(upldatedList);
-      } */
+      setActLoader({});
+      showAlert("success", t("record-delete-alert"));
+      const upldatedList = props.List.filter(
+        (x) => x.objectId !== item.objectId
+      );
+      props.setList(upldatedList);
     } catch (err) {
-      console.log("err", err);
+      console.log("err in delete", err);
       showAlert("danger", t("something-went-wrong-mssg"));
       setActLoader({});
     }
@@ -417,20 +411,10 @@ const DocumentsReport = (props) => {
   };
   //function to handle revoke/decline docment
   const handleRevoke = async (item) => {
-    const jsonSender = authService.getCurrentUser();
     setIsRevoke({});
     setActLoader({ [`${item.objectId}`]: true });
-    const data = {
-      IsDeclined: true,
-      DeclineReason: reason,
-      DeclineBy: {
-        __type: "Pointer",
-        className: "_User",
-        objectId: jsonSender?.objectId
-      }
-    };
     try {
-      await documentService.updateDocument(item.objectId, data);
+      await documentService.declineDocument(item.objectId, reason || "");
       setActLoader({});
       showAlert("success", t("record-revoke-alert"));
       const upldatedList = props.List.filter(
@@ -439,7 +423,7 @@ const DocumentsReport = (props) => {
       props.setList(upldatedList);
       setReason("");
     } catch (err) {
-      console.log("err", err);
+      console.log("err in revoke", err);
       setReason("");
       showAlert("danger", t("something-went-wrong-mssg"));
       setActLoader({});
@@ -488,10 +472,14 @@ const DocumentsReport = (props) => {
 
   // `handleSubjectChange` is used to add or change subject of resend mail
   const handleSubjectChange = (subject, doc) => {
+    if (!userDetails?.Email) {
+      console.warn("handleSubjectChange: userDetails.Email is missing");
+      return;
+    }
     const encodeBase64 = userDetails?.objectId
       ? btoa(`${doc.objectId}/${userDetails.Email}/${userDetails.objectId}`)
       : btoa(`${doc.objectId}/${userDetails.Email}`);
-    const expireDate = doc.ExpiryDate.iso;
+    const expireDate = doc.ExpiryDate?.iso || doc.ExpiryDate;
     const newDate = new Date(expireDate);
     const localExpireDate = newDate.toLocaleDateString("en-US", {
       day: "numeric",
@@ -502,16 +490,14 @@ const DocumentsReport = (props) => {
     const variables = {
       document_title: doc.Name,
       note: doc?.Note || "",
-      sender_name:
-        doc.ExtUserPtr.Name,
-      sender_mail:
-        doc.ExtUserPtr.Email,
+      sender_name: doc.ExtUserPtr?.Name || "",
+      sender_mail: doc.ExtUserPtr?.Email || "",
       sender_phone: doc.ExtUserPtr?.Phone || "",
       receiver_name: userDetails?.Name || "",
-      receiver_email: userDetails?.Email,
+      receiver_email: userDetails?.Email || "",
       receiver_phone: userDetails?.Phone || "",
       expiry_date: localExpireDate,
-      company_name: doc.ExtUserPtr.Company,
+      company_name: doc.ExtUserPtr?.Company || "",
       signing_url: signPdf
     };
     const res = replaceMailVaribles(subject, "", variables);
@@ -520,10 +506,14 @@ const DocumentsReport = (props) => {
 
   // `handlebodyChange` is used to add or change body of resend mail
   const handlebodyChange = (body, doc) => {
+    if (!userDetails?.Email) {
+      console.warn("handlebodyChange: userDetails.Email is missing");
+      return;
+    }
     const encodeBase64 = userDetails?.objectId
       ? btoa(`${doc.objectId}/${userDetails.Email}/${userDetails.objectId}`)
       : btoa(`${doc.objectId}/${userDetails.Email}`);
-    const expireDate = doc.ExpiryDate.iso;
+    const expireDate = doc.ExpiryDate?.iso || doc.ExpiryDate;
     const newDate = new Date(expireDate);
     const localExpireDate = newDate.toLocaleDateString("en-US", {
       day: "numeric",
@@ -534,16 +524,14 @@ const DocumentsReport = (props) => {
     const variables = {
       document_title: doc.Name,
       note: doc?.Note || "",
-      sender_name:
-        doc.ExtUserPtr.Name,
-      sender_mail:
-        doc.ExtUserPtr.Email,
+      sender_name: doc.ExtUserPtr?.Name || "",
+      sender_mail: doc.ExtUserPtr?.Email || "",
       sender_phone: doc.ExtUserPtr?.Phone || "",
       receiver_name: userDetails?.Name || "",
       receiver_email: userDetails?.Email || "",
       receiver_phone: userDetails?.Phone || "",
       expiry_date: localExpireDate,
-      company_name: doc.ExtUserPtr.Company,
+      company_name: doc.ExtUserPtr?.Company || "",
       signing_url: signPdf
     };
     const res = replaceMailVaribles("", body, variables);
@@ -554,72 +542,119 @@ const DocumentsReport = (props) => {
   };
   // `handleNextBtn` is used to open edit mail template screen in resend mail modal
   // as well as replace variable with original one
-  const handleNextBtn = (user, doc) => {
-    // Extract email using same logic as display (line 1685-1687)
-    const email = user?.email || user?.signerPtr?.Email || "";
-    const emailTrimmed = email?.trim() || "";
-    
-    console.log("handleNextBtn called", {
-      user,
-      email,
-      emailTrimmed,
-      userEmail: user?.email,
-      signerPtrEmail: user?.signerPtr?.Email,
-      signerPtr: user?.signerPtr
-    });
-    
-    if (!emailTrimmed) {
-      console.error("handleNextBtn: No email found for user", { user });
-      showAlert("danger", "Cannot resend email: Signer email address is missing.");
-      return;
+  const handleNextBtn = async (user, doc) => {
+    try {
+      // Extract email using same logic as display (line 1685-1687)
+      const email = user?.email || user?.signerPtr?.Email || "";
+      const emailTrimmed = email?.trim() || "";
+      
+      console.log("handleNextBtn called", {
+        user,
+        email,
+        emailTrimmed,
+        userEmail: user?.email,
+        signerPtrEmail: user?.signerPtr?.Email,
+        signerPtr: user?.signerPtr
+      });
+      
+      if (!emailTrimmed) {
+        console.error("handleNextBtn: No email found for user", { user });
+        showAlert("danger", "Cannot resend email: Signer email address is missing.");
+        return;
+      }
+      
+      const userdata = {
+        Name: user?.signerPtr?.Name || "",
+        Email: emailTrimmed,
+        Phone: user?.signerPtr?.Phone || "",
+        objectId: user?.signerPtr?.objectId || ""
+      };
+      setUserDetails(userdata);
+      const encodeBase64 = user.email
+        ? btoa(`${doc.objectId}/${user.email}`)
+        : btoa(
+            `${doc.objectId}/${user.signerPtr.Email}/${user.signerPtr.objectId}`
+          );
+      const expireDate = doc.ExpiryDate?.iso || doc.ExpiryDate;
+      const newDate = new Date(expireDate);
+      const localExpireDate = newDate.toLocaleDateString("en-US", {
+        day: "numeric",
+        month: "long",
+        year: "numeric"
+      });
+      const signPdf = `${window.location.origin}/login/${encodeBase64}`;
+      const variables = {
+        document_title: doc.Name,
+        note: doc?.Note || "",
+        sender_name: doc.ExtUserPtr?.Name || "",
+        sender_mail: doc.ExtUserPtr?.Email || "",
+        sender_phone: doc.ExtUserPtr?.Phone || "",
+        receiver_name: user?.signerPtr?.Name || "",
+        receiver_email: user?.email ? user?.email : user?.signerPtr?.Email,
+        receiver_phone: user?.signerPtr?.Phone || "",
+        expiry_date: localExpireDate,
+        company_name: doc?.ExtUserPtr?.Company || "",
+        signing_url: signPdf
+      };
+      
+      // Fetch tenant details to get email templates (RequestBody and RequestSubject)
+      // These are stored in contracts_Users, not in the document
+      let tenantDetails = null;
+      try {
+        const currentUser = authService.getCurrentUser();
+        if (currentUser?.id || currentUser?.objectId) {
+          tenantDetails = await getTenantDetails(currentUser.id || currentUser.objectId);
+          // If getTenantDetails returns empty object, it means tenant not found - use defaults
+          if (tenantDetails && Object.keys(tenantDetails).length === 0) {
+            tenantDetails = null;
+          }
+        }
+      } catch (err) {
+        console.warn("Could not fetch tenant details for email templates:", err);
+        tenantDetails = null;
+      }
+      
+      // Get email templates from tenant details, document, or use defaults
+      const subject =
+        doc?.RequestSubject ||
+        tenantDetails?.RequestSubject ||
+        defaultMailSubject;
+      const body =
+        doc?.RequestBody ||
+        tenantDetails?.RequestBody ||
+        defaultMailBody;
+      
+      console.log("Email template sources:", {
+        docRequestSubject: doc?.RequestSubject,
+        tenantRequestSubject: tenantDetails?.RequestSubject,
+        docRequestBody: doc?.RequestBody,
+        tenantRequestBody: tenantDetails?.RequestBody,
+        usingDefaultSubject: !doc?.RequestSubject && !tenantDetails?.RequestSubject,
+        usingDefaultBody: !doc?.RequestBody && !tenantDetails?.RequestBody,
+        finalSubject: subject,
+        finalBodyLength: body?.length
+      });
+      
+      if (!subject || !body) {
+        console.error("handleNextBtn: Missing email template", { subject, body });
+        showAlert("danger", "Cannot load email template. Please try again.");
+        return;
+      }
+      
+      const res = replaceMailVaribles(subject, body, variables);
+      console.log("Replaced email content:", {
+        originalSubject: subject,
+        originalBodyLength: body?.length,
+        replacedSubject: res.subject,
+        replacedBodyLength: res.body?.length
+      });
+      
+      setMail({ subject: res.subject, body: res.body });
+      setIsNextStep({ [user.Id]: true });
+    } catch (err) {
+      console.error("Error in handleNextBtn:", err);
+      showAlert("danger", "Failed to load email template. Please try again.");
     }
-    
-    const userdata = {
-      Name: user?.signerPtr?.Name || "",
-      Email: emailTrimmed,
-      Phone: user?.signerPtr?.Phone || "",
-      objectId: user?.signerPtr?.objectId || ""
-    };
-    setUserDetails(userdata);
-    const encodeBase64 = user.email
-      ? btoa(`${doc.objectId}/${user.email}`)
-      : btoa(
-          `${doc.objectId}/${user.signerPtr.Email}/${user.signerPtr.objectId}`
-        );
-    const expireDate = doc.ExpiryDate.iso;
-    const newDate = new Date(expireDate);
-    const localExpireDate = newDate.toLocaleDateString("en-US", {
-      day: "numeric",
-      month: "long",
-      year: "numeric"
-    });
-    const signPdf = `${window.location.origin}/login/${encodeBase64}`;
-    const variables = {
-      document_title: doc.Name,
-      note: doc?.Note || "",
-      sender_name:
-        doc.ExtUserPtr.Name,
-      sender_mail:
-        doc.ExtUserPtr.Email,
-      sender_phone: doc.ExtUserPtr?.Phone || "",
-      receiver_name: user?.signerPtr?.Name || "",
-      receiver_email: user?.email ? user?.email : user?.signerPtr?.Email,
-      receiver_phone: user?.signerPtr?.Phone || "",
-      expiry_date: localExpireDate,
-      company_name: doc?.ExtUserPtr?.Company || "",
-      signing_url: signPdf
-    };
-    const subject =
-      doc?.RequestSubject ||
-      doc?.ExtUserPtr?.TenantId?.RequestSubject ||
-      `{{sender_name}} has requested you to sign "{{document_title}}"`;
-    const body =
-      doc?.RequestBody ||
-      doc?.ExtUserPtr?.TenantId?.RequestBody ||
-      `<html><head><meta http-equiv='Content-Type' content='text/html; charset=UTF-8' /></head><body><p>Hi {{receiver_name}},</p><br><p>We hope this email finds you well. {{sender_name}} has requested you to review and sign <b>"{{document_title}}"</b>.</p><p>Your signature is crucial to proceed with the next steps as it signifies your agreement and authorization.</p><br><p><a href='{{signing_url}}' rel='noopener noreferrer' target='_blank'>Sign here</a></p><br><br><p>If you have any questions or need further clarification regarding the document or the signing process,  please contact the sender.</p><br><p>Thanks</p><p> Team ${appName}</p><br></body> </html>`;
-    const res = replaceMailVaribles(subject, body, variables);
-    setMail((prev) => ({ ...prev, subject: res.subject, body: res.body }));
-    setIsNextStep({ [user.Id]: true });
   };
   const handleResendMail = async (e, doc, user) => {
     e.preventDefault();
@@ -761,23 +796,22 @@ const DocumentsReport = (props) => {
     });
     
     try {
-      // #region agent log
-      console.log('[DEBUG] About to call emailService.sendCustomEmail', {recipient:emailData.recipient,subject:emailData.subject,htmlLength:emailData.html?.length,hasFrom:!!emailData.from,fullEmailData:emailData});
-      fetch('http://127.0.0.1:7243/ingest/44a8b1ee-5909-4662-81c1-64197b8dcd0c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'DocumentsReport.jsx:751',message:'About to call emailService.sendCustomEmail',data:{recipient:emailData.recipient,subject:emailData.subject,htmlLength:emailData.html?.length,hasFrom:!!emailData.from},timestamp:Date.now(),runId:'run1',hypothesisId:'A,B'})}).catch((e)=>console.error('[DEBUG] Log fetch failed',e));
-      // #endregion
       const response = await emailService.sendCustomEmail(emailData);
-      // #region agent log
-      console.log('[DEBUG] emailService.sendCustomEmail success', {hasResponse:!!response,responseData:response});
-      fetch('http://127.0.0.1:7243/ingest/44a8b1ee-5909-4662-81c1-64197b8dcd0c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'DocumentsReport.jsx:754',message:'emailService.sendCustomEmail success',data:{hasResponse:!!response,responseStatus:response?.status},timestamp:Date.now(),runId:'run1',hypothesisId:'E'})}).catch((e)=>console.error('[DEBUG] Log fetch failed',e));
-      // #endregion
+      
+      // Check if response indicates success or error
+      if (response && response.status === "error") {
+        // Backend returned error in response body (even with 200 status)
+        const errorMsg = response.error || response.message || t("something-went-wrong-mssg");
+        console.error("Email send failed:", errorMsg, response);
+        showAlert("danger", errorMsg);
+        return;
+      }
+      
+      // Success
       console.log("Email sent successfully:", response);
       showAlert("success", t("mail-sent-alert"));
       setIsResendMail({});
     } catch (err) {
-      // #region agent log
-      console.error('[DEBUG] emailService.sendCustomEmail error caught', {errorMessage:err?.message,status:err?.response?.status,errorData:err?.response?.data,fullError:err});
-      fetch('http://127.0.0.1:7243/ingest/44a8b1ee-5909-4662-81c1-64197b8dcd0c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'DocumentsReport.jsx:760',message:'emailService.sendCustomEmail error caught',data:{errorMessage:err?.message,status:err?.response?.status,errorData:err?.response?.data},timestamp:Date.now(),runId:'run1',hypothesisId:'C,D,E'})}).catch((e)=>console.error('[DEBUG] Log fetch failed',e));
-      // #endregion
       console.error("Error sending resend email:", {
         error: err,
         response: err?.response,
@@ -788,11 +822,31 @@ const DocumentsReport = (props) => {
       
       // Extract error message with better handling
       let errorMessage = t("something-went-wrong-mssg");
-      if (err?.response?.data?.error) {
-        errorMessage = err.response.data.error;
-      } else if (err?.response?.data?.message) {
-        errorMessage = err.response.data.message;
-      } else if (err?.message) {
+      
+      // Check response data first (most specific error)
+      if (err?.response?.data) {
+        if (err.response.data.error) {
+          errorMessage = err.response.data.error;
+        } else if (err.response.data.message) {
+          errorMessage = err.response.data.message;
+        } else if (typeof err.response.data === 'string') {
+          errorMessage = err.response.data;
+        }
+      }
+      
+      // Check HTTP status codes for specific errors
+      if (err?.response?.status === 503) {
+        errorMessage = "Email service is not available. Please ensure MailDev is running and SMTP is configured.";
+      } else if (err?.response?.status === 400) {
+        errorMessage = err?.response?.data?.error || "Invalid email data. Please check the email subject and body.";
+      } else if (err?.response?.status === 401) {
+        errorMessage = "Authentication required. Please log in again.";
+      } else if (err?.response?.status === 500) {
+        errorMessage = err?.response?.data?.error || "Server error while sending email. Please try again.";
+      }
+      
+      // Fallback to error message if no specific error found
+      if (errorMessage === t("something-went-wrong-mssg") && err?.message) {
         errorMessage = err.message;
       }
       
@@ -897,12 +951,9 @@ const DocumentsReport = (props) => {
   const handleRenameDoc = async (item) => {
     setActLoader({ [item.objectId]: true });
     setIsModal({});
-    const className = "contracts_Document";
     try {
-      // Use documentService to query documents
-      const docObj = await query.get(item.objectId);
-      docObj.set("Name", renameDoc);
-      await docObj.save();
+      // Use documentService to update document name
+      await documentService.updateDocument(item.objectId, { name: renameDoc });
       //update report list data
       const updateList = props.List.map((x) =>
         x.objectId === item.objectId ? { ...x, Name: renameDoc } : x
@@ -911,6 +962,7 @@ const DocumentsReport = (props) => {
       setActLoader({});
       showAlert("success", "Document updated", 2000);
     } catch (err) {
+      console.log("err in rename", err);
       showAlert("danger", t("something-went-wrong-mssg"), 2000);
       setActLoader({});
     }
@@ -931,13 +983,17 @@ const DocumentsReport = (props) => {
     setIsModal({});
   };
   const handleSaveAsTemplate = async (doc) => {
+    setActLoader({ [doc.objectId]: true });
     try {
       const params = { docId: doc?.objectId };
       const templateRes = await saveAsTemplate(params);
-      setTemplateId(templateRes?.id);
+      // Backend returns DocumentResponse with objectId field
+      setTemplateId(templateRes?.objectId || templateRes?.id);
       setIsSuccess({ [doc.objectId]: true });
+      showAlert("success", t("template-saved-success") || "Template saved successfully", 2000);
     } catch (err) {
       console.log("Err in saveastemplate", err);
+      showAlert("danger", t("something-went-wrong-mssg") || "Something went wrong", 2000);
     } finally {
       setActLoader({});
     }
@@ -988,6 +1044,8 @@ const DocumentsReport = (props) => {
     setIsResendMail({});
     setIsNextStep({});
     setUserDetails({});
+    setMail({ subject: "", body: "" });
+    setReason("");
   };
 
   const handleRecreateDoc = async (item) => {
@@ -1778,7 +1836,7 @@ const DocumentsReport = (props) => {
                                       </form>
                                     </div>
                                   )}
-                                  {Object?.keys(isNextStep) <= 0 && (
+                                  {!isNextStep[user.Id] && (
                                     <div className="flex justify-between items-center gap-2 my-2 px-3">
                                       <div className="text-base-content">
                                         {user?.signerPtr?.Name || "-"}{" "}

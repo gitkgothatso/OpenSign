@@ -409,22 +409,17 @@ function PdfRequestFiles(
             obj?.Placeholders?.length &&
             currUserId !== "undefined"
           ) {
-            const params = {
-              event: "viewed",
-              contactId: currUserId,
-              body: {
-                objectId: documentData?.[0].objectId,
-              }
-            };
-            // TODO: triggerevent - This Parse Cloud function may need backend implementation
-            // For now, this is a no-op as the backend doesn't have an equivalent endpoint
-            // The event triggering logic should be handled by the backend automatically
-            // when documents are updated via documentService.updateDocument()
+            // Trigger "viewed" event for document tracking
             try {
-              // Event triggering is now handled automatically by the backend
-              // No explicit call needed - document updates trigger events automatically
+              await documentService.triggerEvent(
+                documentData[0].objectId,
+                "viewed",
+                currUserId,
+                null // IP address can be extracted from request if needed
+              );
             } catch (err) {
-              console.log("Err ", err);
+              // Log warning but don't break the flow if event tracking fails
+              console.warn("Error triggering document event:", err);
             }
           }
         }

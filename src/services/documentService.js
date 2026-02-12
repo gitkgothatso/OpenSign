@@ -200,6 +200,56 @@ export const documentService = {
   getSigners: async (documentId) => {
     const document = await documentService.getDocument(documentId);
     return document.signers || [];
+  },
+
+  /**
+   * Trigger document event (e.g., "viewed")
+   * Replaces: Parse.Cloud.run('triggerEvent', params)
+   * 
+   * @param {string} documentId - Document ID
+   * @param {string} event - Event type (e.g., "viewed")
+   * @param {string} contactId - Contact ID
+   * @param {string} ipAddress - Optional IP address
+   * @returns {Promise<Object>} Event result
+   */
+  triggerEvent: async (documentId, event, contactId, ipAddress = null) => {
+    const body = {
+      event,
+      contactId
+    };
+    
+    const config = {};
+    if (ipAddress) {
+      config.headers = {
+        'X-Real-IP': ipAddress
+      };
+    }
+    
+    const response = await apiClient.post(`/documents/${documentId}/events`, body, config);
+    return response.data;
+  },
+
+  /**
+   * Archive document
+   * @param {string} documentId - Document ID
+   * @returns {Promise<Object>} Updated document
+   */
+  archiveDocument: async (documentId) => {
+    const response = await apiClient.put(`/documents/${documentId}/archive`);
+    return response.data;
+  },
+
+  /**
+   * Update document expiry date
+   * @param {string} documentId - Document ID
+   * @param {string} expiryDate - New expiry date (ISO string)
+   * @returns {Promise<Object>} Updated document
+   */
+  updateDocumentExpiry: async (documentId, expiryDate) => {
+    const response = await apiClient.put(`/documents/${documentId}/expiry`, {
+      expiryDate
+    });
+    return response.data;
   }
 };
 
@@ -265,11 +315,14 @@ export const signPdf = async (params) => {
 /**
  * Save document as template
  * Replaces: Parse.Cloud.run('saveastemplate', params)
- * @param {Object} params - Template parameters
+ * @param {Object} params - Template parameters {docId, templateName?}
  * @returns {Promise<Object>} Created template
  */
 export const saveAsTemplate = async (params) => {
-  const response = await apiClient.post('/templates/from-document', params);
+  const { docId, templateName } = params;
+  const url = `/documents/${docId}/save-as-template`;
+  const config = templateName ? { params: { templateName } } : {};
+  const response = await apiClient.post(url, {}, config);
   return response.data;
 };
 
@@ -310,13 +363,11 @@ export const softDeleteDocument = async (documentId) => {
 };
 
 /**
- * Archive document
+ * Archive document (standalone export for backward compatibility)
+ * @deprecated Use documentService.archiveDocument() instead
  * @param {string} documentId - Document ID
  * @returns {Promise<Object>} Updated document
  */
 export const archiveDocument = async (documentId) => {
-  const response = await apiClient.put(`/documents/${documentId}/archive`, {
-    isArchive: true
-  });
-  return response.data;
+  return documentService.archiveDocument(documentId);
 };

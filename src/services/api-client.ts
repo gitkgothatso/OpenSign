@@ -2,7 +2,7 @@
  * OpenSign Server API Client
  * Auto-generated TypeScript client for OpenSign Server REST API
  * 
- * Base URL: http://localhost:8080
+ * Base URL: Configured via VITE_API_URL environment variable or defaults to http://localhost:8080
  * Version: 1.0.0
  */
 
@@ -127,7 +127,11 @@ export class OpenSignApiClient {
   private config: ApiClientConfig;
 
   constructor(config: ApiClientConfig = {}) {
-    this.baseURL = config.baseURL || 'http://localhost:8080';
+    // Use VITE_API_URL environment variable as default, fallback to config or localhost
+    const defaultBaseURL = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_URL) 
+      ? import.meta.env.VITE_API_URL 
+      : 'http://localhost:8080';
+    this.baseURL = config.baseURL || defaultBaseURL;
     this.timeout = config.timeout || 30000;
     this.defaultHeaders = {
       'Content-Type': 'application/json',

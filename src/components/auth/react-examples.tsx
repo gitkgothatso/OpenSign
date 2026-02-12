@@ -35,7 +35,15 @@ interface AuthProviderProps {
   apiBaseURL?: string;
 }
 
-export function AuthProvider({ children, apiBaseURL = 'http://localhost:8080' }: AuthProviderProps) {
+// Get default API URL from environment variable or fallback
+const getDefaultApiURL = () => {
+  if (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_URL) {
+    return import.meta.env.VITE_API_URL;
+  }
+  return 'http://localhost:8080';
+};
+
+export function AuthProvider({ children, apiBaseURL = getDefaultApiURL() }: AuthProviderProps) {
   const [authState, setAuthState] = useState<AuthState>({
     isAuthenticated: false,
     user: null,

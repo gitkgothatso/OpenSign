@@ -94,8 +94,20 @@ const DashboardCard = (props) => {
         }
         
         // Extract reportId from query if it's a report function
-        // For now, use reportService with default parameters
-        const reportId = props.Data.class?.replace('/functions/', '') || props.Data.Redirect_id;
+        // Only use Redirect_id if it exists and is a valid reportId
+        // Don't use class unless it's actually a function path (starts with /functions/)
+        let reportId = props.Data.Redirect_id;
+        if (!reportId && props.Data.class?.startsWith('/functions/')) {
+          reportId = props.Data.class.replace('/functions/', '');
+        }
+        
+        // Only call report API if we have a valid reportId
+        if (!reportId || typeof reportId !== 'string' || reportId.trim() === '') {
+          console.warn("DashboardCard: No valid reportId found, skipping report fetch", props.Data);
+          setresponse(0);
+          setLoading(false);
+          return;
+        }
         
         try {
           const reportData = await reportService.getReport(
@@ -266,7 +278,18 @@ const DashboardCard = (props) => {
         });
 
         // Use reportService for filter queries
-        const reportId = props.FilterData.class?.replace('/functions/', '') || props.FilterData.Redirect_id;
+        // Only use Redirect_id if it exists and is a valid reportId
+        // Don't use class unless it's actually a function path (starts with /functions/)
+        let reportId = props.FilterData.Redirect_id;
+        if (!reportId && props.FilterData.class?.startsWith('/functions/')) {
+          reportId = props.FilterData.class.replace('/functions/', '');
+        }
+        
+        // Only call report API if we have a valid reportId
+        if (!reportId || typeof reportId !== 'string' || reportId.trim() === '') {
+          console.warn("DashboardCard: No valid reportId found for filter, skipping report fetch", props.FilterData);
+          return;
+        }
         
         try {
           const reportData = await reportService.getReport(

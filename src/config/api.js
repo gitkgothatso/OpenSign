@@ -44,7 +44,9 @@ apiClient.interceptors.response.use(
       url.includes('/users/by-email') || 
       url.includes('/users/by-username') ||
       url.includes('/tenants/domain/') ||
-      url.includes('/contacts/email/');
+      url.includes('/contacts/email/') ||
+      url.includes('/storage/credits/') ||
+      url.includes('/storage/files');
     
     if (error.response?.status === 404 && isExpected404) {
       // For expected 404s, suppress the console error and create a silent error

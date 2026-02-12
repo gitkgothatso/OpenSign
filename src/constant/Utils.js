@@ -2633,6 +2633,24 @@ export const getAppLogo = async () => {
     }
   });
 
+  // Add response interceptor to suppress 404 errors for tenant lookup
+  publicClient.interceptors.response.use(
+    (response) => response,
+    (error) => {
+      // Suppress 404 errors for tenant domain lookup (expected when tenant doesn't exist)
+      if (error.config?.url?.includes('/tenants/domain/') && error.response?.status === 404) {
+        // Return a rejected promise with a flag to indicate this is expected
+        const silentError = new Error(error.message);
+        silentError.response = error.response;
+        silentError.config = error.config;
+        silentError.isAxiosError = true;
+        silentError.isExpected404 = true;
+        return Promise.reject(silentError);
+      }
+      return Promise.reject(error);
+    }
+  );
+
   // Try to get tenant logo (optional - tenant may not exist yet)
   try {
     const tenantResponse = await publicClient.get(`/tenants/domain/${encodeURIComponent(domain)}`);
@@ -2643,7 +2661,9 @@ export const getAppLogo = async () => {
   } catch (err) {
     // Tenant not found is OK - silently ignore (404 is expected if tenant doesn't exist)
     // Only log if it's not a 404 (unexpected error)
-    if (err?.response?.status && err.response.status !== 404) {
+    if (err?.isExpected404) {
+      // This is an expected 404, silently continue
+    } else if (err?.response?.status && err.response.status !== 404) {
       console.warn("Error fetching tenant for domain:", domain, err?.response?.status, err?.message);
     }
     // Silently continue with default logo if tenant doesn't exist
@@ -2740,23 +2760,41 @@ export const getTenantDetails = async (objectId, contactId) => {
     
     // If no tenant ID found, return empty object instead of error
     // This allows "Sign Yourself" documents to proceed without tenant details
+    // This is expected behavior for users without tenants, so we don't log it
     if (!tenantId) {
-      console.warn("Tenant ID not found. User may not be associated with a tenant. Proceeding without tenant details.");
+      // Silently return empty object - this is expected for users without tenants
       return {}; // Return empty object instead of error string
     }
     
     // Fetch tenant details using the tenant ID
-    const tenantDetails = await tenantService.getTenantById(tenantId);
-    
-    if (tenantDetails) {
-      const updateRes = JSON.parse(JSON.stringify(tenantDetails));
-      return updateRes;
-    } else {
-      return "";
+    try {
+      const tenantDetails = await tenantService.getTenantById(tenantId);
+      
+      if (tenantDetails) {
+        const updateRes = JSON.parse(JSON.stringify(tenantDetails));
+        return updateRes;
+      } else {
+        // Tenant not found but no error - return empty object
+        return {};
+      }
+    } catch (tenantErr) {
+      // Handle 404 (tenant not found) gracefully
+      if (tenantErr?.response?.status === 404 || tenantErr?.isExpected404) {
+        // Tenant doesn't exist - return empty object to allow app to continue
+        // This is expected behavior, so we don't log it
+        return {};
+      }
+      // Re-throw unexpected errors to be caught by outer catch
+      throw tenantErr;
     }
   } catch (err) {
-    console.log("err in gettenant", err);
-    return "user does not exist!";
+    // Only log unexpected errors (not 404s which are handled above)
+    if (err?.response?.status !== 404 && !err?.isExpected404) {
+      console.warn("Error getting tenant details:", err?.response?.status, err?.message);
+    }
+    // Return empty object for all errors to prevent breaking the UI
+    // The app can function without tenant details (e.g., "Sign Yourself" documents)
+    return {};
   }
 };
 

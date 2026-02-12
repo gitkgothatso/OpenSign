@@ -32,15 +32,21 @@ export const SaveFileSize = async (size, imageUrl, tenantId, userId) => {
       );
     }
   } catch (err) {
-    // If 404, create new credits record
-    if (err?.response?.status === 404) {
+    // If 404, create new credits record (expected when credits don't exist yet)
+    if (err?.response?.status === 404 || err?.isExpected404) {
       try {
         await storageService.createTenantCredits(tenantIdStr, size);
       } catch (createErr) {
-        console.log("err in create tenant credits", createErr);
+        // Only log if it's not an expected 404
+        if (createErr?.response?.status !== 404 && !createErr?.isExpected404) {
+          console.warn("Error creating tenant credits:", createErr);
+        }
       }
     } else {
-      console.log("err in save usage", err);
+      // Only log unexpected errors
+      if (err?.response?.status !== 404 && !err?.isExpected404) {
+        console.warn("Error saving storage usage:", err);
+      }
     }
   }
   
@@ -62,6 +68,9 @@ const saveDataFile = async (size, imageUrl, tenantId, userId) => {
       userId
     );
   } catch (err) {
-    console.log("err in save data file", err);
+    // Only log unexpected errors (404s are expected if file record doesn't exist)
+    if (err?.response?.status !== 404 && !err?.isExpected404) {
+      console.warn("Error saving data file:", err);
+    }
   }
 };
