@@ -35,16 +35,29 @@ const SignerCell = ({ reportName, item, handleRemovePrefill }) => {
       (data) => data?.Role !== "prefill"
     );
     const signers = removePrefill?.map((x, i) => {
+      // Find audit entry - handle both old and new UserPtr formats
       const audit = item?.AuditTrail?.find(
-        (audit) => audit?.UserPtr?.objectId === x.signerObjId
+        (audit) => 
+          audit?.UserPtr?.objectId === x.signerObjId ||
+          audit?.UserPtr?.UserId?.objectId === x.signerObjId ||
+          audit?.userPtr?.objectId === x.signerObjId ||
+          audit?.userPtr?.userId?.objectId === x.signerObjId
       );
       const format = (date) =>
         date
           ? formatDateTime(new Date(date), DateFormat, timezone, Is12Hr)
           : "-";
+      // Get email from multiple sources with fallbacks
+      const signerEmail = 
+        getSignerEmail(x, item?.Signers) || 
+        x?.email || 
+        x?.Email || 
+        (x?.signerPtr && (x.signerPtr.email || x.signerPtr.Email)) ||
+        "-";
+      
       return {
         id: i,
-        Email: getSignerEmail(x, item?.Signers) || x?.email || "-",
+        Email: signerEmail,
         Activity: audit?.Activity?.toUpperCase() || "SENT",
         SignedOn: format(audit?.SignedOn),
         ViewedOn: format(audit?.ViewedOn)
@@ -168,7 +181,11 @@ const SignerCell = ({ reportName, item, handleRemovePrefill }) => {
                         </td>
                       )}
                       <td className="pl-3 text-[12px] py-2 break-all">
-                        {x?.email || getSignerEmail(x, item?.Signers) || "-"}
+                        {x?.email || 
+                         x?.Email || 
+                         getSignerEmail(x, item?.Signers) || 
+                         (x?.signerPtr && (x.signerPtr.email || x.signerPtr.Email)) ||
+                         "-"}
                       </td>
                     </tr>
                   )

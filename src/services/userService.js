@@ -109,6 +109,30 @@ export const userService = {
       tourStatus: tourStatus
     });
     return response.data;
+  },
+
+  /**
+   * Update email templates
+   * Replaces: Parse.Cloud.run('updateEmailTemplates', { tenantId, details })
+   * @param {string} userId - User ID
+   * @param {Object} templates - Email template data { CompletionBody?, CompletionSubject?, RequestBody?, RequestSubject? }
+   * @returns {Promise<Object>} Updated contracts_Users record
+   */
+  updateEmailTemplates: async (userId, templates) => {
+    const response = await apiClient.put(`/users/${userId}/email-templates`, templates);
+    return response.data;
+  },
+
+  /**
+   * Set widget preferences
+   * Replaces: Parse.Cloud.run('setWidgetPreferences', { dateWidget })
+   * @param {string} userId - User ID
+   * @param {Object} preferences - Widget preferences { dateWidget: { isSigningDate, isReadOnly, date, format } }
+   * @returns {Promise<Object>} Updated contracts_Users record with WidgetPreferences
+   */
+  setWidgetPreferences: async (userId, preferences) => {
+    const response = await apiClient.put(`/users/${userId}/widget-preferences`, preferences);
+    return response.data;
   }
 };
 

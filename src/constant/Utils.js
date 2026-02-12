@@ -217,42 +217,133 @@ export const getDrive = async (documentId, skip = 0, limit = 50) => {
       return response;
     } else if (response?.content) {
       // Transform backend response (camelCase) to Parse format (PascalCase) for compatibility
-      return response.content.map(doc => ({
-        objectId: doc.objectId,
-        Name: doc.name,
-        Description: doc.description || '',
-        Note: doc.note || '',
-        URL: doc.url,
-        SignedUrl: doc.signedUrl,
-        Placeholders: doc.placeholders || [],
-        Signers: doc.signers || [],
-        IsCompleted: doc.isCompleted || false,
-        IsDeclined: doc.isDeclined || false,
-        CompletedOn: doc.completedOn,
-        ExpiryDate: doc.expiryDate,
-        SendinOrder: doc.sendInOrder || false,
-        AutomaticReminders: doc.autoReminder || false,
-        RemindOnceInEvery: doc.remindOnceInEvery,
-        IsEnableOTP: doc.isEnableOTP || false,
-        AuditTrail: doc.auditTrail || [],
-        TimeToCompleteDays: doc.timeToCompleteDays,
-        Type: doc.type || 'Document',
-        IsSignyourself: doc.type === 'self-sign', // Set IsSignyourself based on type
-        Size: doc.size,
-        createdAt: doc.createdAt,
-        updatedAt: doc.updatedAt,
-        // Map createdBy to ExtUserPtr for compatibility
-        ExtUserPtr: doc.createdBy ? {
-          objectId: doc.createdBy,
-          className: 'contracts_Users'
-        } : null,
-        // Map folderId to Folder pointer
-        Folder: doc.folderId ? {
-          __type: 'Pointer',
-          className: 'contracts_Folder',
-          objectId: doc.folderId
-        } : null
-      }));
+      // Process documents in parallel for better performance
+      const transformedDocs = await Promise.all(
+        response.content.map(async (doc) => {
+          // Fetch user details for ExtUserPtr if createdBy exists
+          let extUserPtr = null;
+          if (doc.createdBy) {
+            try {
+              const userDetails = await userService.getUserById(doc.createdBy);
+              if (userDetails) {
+                extUserPtr = {
+                  objectId: doc.createdBy,
+                  className: 'contracts_Users',
+                  Name: userDetails.Name || userDetails.name || "",
+                  Email: userDetails.Email || userDetails.email || "",
+                  Phone: userDetails.Phone || userDetails.phone || "",
+                  Company: userDetails.Company || userDetails.company || "",
+                  JobTitle: userDetails.JobTitle || userDetails.jobTitle || "",
+                  SignatureType: userDetails.SignatureType || userDetails.signatureType || []
+                };
+              } else {
+                extUserPtr = {
+                  objectId: doc.createdBy,
+                  className: 'contracts_Users'
+                };
+              }
+            } catch (err) {
+              console.debug(`Error fetching user details for ExtUserPtr in getDrive: ${doc.createdBy}`, err);
+              extUserPtr = {
+                objectId: doc.createdBy,
+                className: 'contracts_Users'
+              };
+            }
+          }
+          
+          // Expand Signers array - fetch contact details for each signer pointer
+          let expandedSigners = [];
+          if (doc.signers && Array.isArray(doc.signers)) {
+            expandedSigners = await Promise.all(
+              doc.signers.map(async (signer) => {
+                // If signer is already an object with details, return as-is
+                if (signer.Email || signer.email || (signer.Name || signer.name)) {
+                  return signer;
+                }
+                
+                // If signer is a pointer, fetch the contact details
+                const signerObjectId = signer.objectId || signer.ObjectId;
+                if (signerObjectId) {
+                  try {
+                    const contact = await contactService.getContact(signerObjectId);
+                    if (contact) {
+                      return {
+                        objectId: signerObjectId,
+                        Name: contact.name || contact.Name || "",
+                        Email: contact.email || contact.Email || "",
+                        Phone: contact.phone || contact.Phone || "",
+                        Company: contact.company || contact.Company || "",
+                        JobTitle: contact.jobTitle || contact.JobTitle || "",
+                        className: signer.className || "contracts_Contactbook",
+                        __type: signer.__type || "Pointer"
+                      };
+                    } else {
+                      return signer;
+                    }
+                  } catch (err) {
+                    console.debug(`Error fetching contact for signer in getDrive: ${signerObjectId}`, err);
+                    return signer;
+                  }
+                }
+                
+                return signer;
+              })
+            );
+          }
+          
+          // Convert ExpiryDate from Instant string to Parse format { iso: "..." }
+          let expiryDateFormatted = null;
+          if (doc.expiryDate) {
+            if (typeof doc.expiryDate === 'object' && doc.expiryDate.iso) {
+              expiryDateFormatted = doc.expiryDate;
+            } else {
+              const expiryDateStr = typeof doc.expiryDate === 'string' 
+                ? doc.expiryDate 
+                : doc.expiryDate.toString();
+              expiryDateFormatted = {
+                __type: 'Date',
+                iso: expiryDateStr
+              };
+            }
+          }
+          
+          return {
+            objectId: doc.objectId,
+            Name: doc.name,
+            Description: doc.description || '',
+            Note: doc.note || '',
+            URL: doc.url,
+            SignedUrl: doc.signedUrl,
+            Placeholders: doc.placeholders || [],
+            Signers: expandedSigners,
+            IsCompleted: doc.isCompleted || false,
+            IsDeclined: doc.isDeclined || false,
+            CompletedOn: doc.completedOn,
+            ExpiryDate: expiryDateFormatted,
+            SendinOrder: doc.sendInOrder || false,
+            AutomaticReminders: doc.autoReminder || false,
+            RemindOnceInEvery: doc.remindOnceInEvery,
+            IsEnableOTP: doc.isEnableOTP || false,
+            AuditTrail: doc.auditTrail || [],
+            TimeToCompleteDays: doc.timeToCompleteDays,
+            Type: doc.type || 'Document',
+            IsSignyourself: doc.type === 'self-sign',
+            Size: doc.size,
+            createdAt: doc.createdAt,
+            updatedAt: doc.updatedAt,
+            // Map createdBy to ExtUserPtr with full user details
+            ExtUserPtr: extUserPtr,
+            // Map folderId to Folder pointer
+            Folder: doc.folderId ? {
+              __type: 'Pointer',
+              className: 'contracts_Folder',
+              objectId: doc.folderId
+            } : null
+          };
+        })
+      );
+      
+      return transformedDocs;
     } else {
       return [];
     }
@@ -2435,6 +2526,102 @@ export const contractDocument = async (documentId, include) => {
     if (document.error) {
       return document;
     } else if (document) {
+      // Fetch user details for ExtUserPtr if createdBy exists
+      let extUserPtr = null;
+      if (document.createdBy) {
+        try {
+          const userDetails = await userService.getUserById(document.createdBy);
+          if (userDetails) {
+            extUserPtr = {
+              objectId: document.createdBy,
+              className: 'contracts_Users',
+              Name: userDetails.Name || userDetails.name || "",
+              Email: userDetails.Email || userDetails.email || "",
+              Phone: userDetails.Phone || userDetails.phone || "",
+              Company: userDetails.Company || userDetails.company || "",
+              JobTitle: userDetails.JobTitle || userDetails.jobTitle || "",
+              SignatureType: userDetails.SignatureType || userDetails.signatureType || []
+            };
+          } else {
+            console.warn(`User details not found for ExtUserPtr: ${document.createdBy}`);
+            // Fallback to pointer only if user fetch fails
+            extUserPtr = {
+              objectId: document.createdBy,
+              className: 'contracts_Users'
+            };
+          }
+        } catch (err) {
+          console.error(`Error fetching user details for ExtUserPtr: ${document.createdBy}`, err);
+          // Fallback to pointer only if user fetch fails
+          extUserPtr = {
+            objectId: document.createdBy,
+            className: 'contracts_Users'
+          };
+        }
+      }
+      
+      // Expand Signers array - fetch contact details for each signer pointer
+      let expandedSigners = [];
+      if (document.signers && Array.isArray(document.signers)) {
+        expandedSigners = await Promise.all(
+          document.signers.map(async (signer) => {
+            // If signer is already an object with details, return as-is
+            if (signer.Email || signer.email || (signer.Name || signer.name)) {
+              return signer;
+            }
+            
+            // If signer is a pointer, fetch the contact details
+            const signerObjectId = signer.objectId || signer.ObjectId;
+            if (signerObjectId) {
+              try {
+                const contact = await contactService.getContact(signerObjectId);
+                if (contact) {
+                  return {
+                    objectId: signerObjectId,
+                    Name: contact.name || contact.Name || "",
+                    Email: contact.email || contact.Email || "",
+                    Phone: contact.phone || contact.Phone || "",
+                    Company: contact.company || contact.Company || "",
+                    JobTitle: contact.jobTitle || contact.JobTitle || "",
+                    className: signer.className || "contracts_Contactbook",
+                    __type: signer.__type || "Pointer"
+                  };
+                } else {
+                  console.warn(`Contact not found for signer: ${signerObjectId}`);
+                  // Return pointer if contact not found
+                  return signer;
+                }
+              } catch (err) {
+                console.error(`Error fetching contact for signer: ${signerObjectId}`, err);
+                // Return pointer if fetch fails
+                return signer;
+              }
+            }
+            
+            // Return signer as-is if no objectId
+            return signer;
+          })
+        );
+      }
+      
+      // Convert ExpiryDate from Instant string to Parse format { iso: "..." }
+      let expiryDateFormatted = null;
+      if (document.expiryDate) {
+        // If it's already an object with iso property, use it
+        if (typeof document.expiryDate === 'object' && document.expiryDate.iso) {
+          expiryDateFormatted = document.expiryDate;
+        } else {
+          // If it's a string (ISO 8601 format), convert to Parse format
+          const expiryDateStr = typeof document.expiryDate === 'string' 
+            ? document.expiryDate 
+            : document.expiryDate.toString();
+          expiryDateFormatted = {
+            __type: 'Date',
+            iso: expiryDateStr
+          };
+        }
+      }
+      
       // Transform backend response (camelCase) to Parse format (PascalCase) for compatibility
       const transformedDoc = {
         objectId: document.objectId,
@@ -2444,11 +2631,11 @@ export const contractDocument = async (documentId, include) => {
         URL: document.url,
         SignedUrl: document.signedUrl,
         Placeholders: document.placeholders || [],
-        Signers: document.signers || [],
+        Signers: expandedSigners,
         IsCompleted: document.isCompleted,
         IsDeclined: document.isDeclined,
         CompletedOn: document.completedOn,
-        ExpiryDate: document.expiryDate,
+        ExpiryDate: expiryDateFormatted,
         SendinOrder: document.sendInOrder,
         AutomaticReminders: document.autoReminder,
         RemindOnceInEvery: document.remindOnceInEvery,
@@ -2461,11 +2648,8 @@ export const contractDocument = async (documentId, include) => {
         updatedAt: document.updatedAt,
         // Check if document is a "self-sign" type
         IsSignyourself: document.type === 'self-sign',
-        // Map createdBy to ExtUserPtr for compatibility
-        ExtUserPtr: document.createdBy ? {
-          objectId: document.createdBy,
-          className: 'contracts_Users'
-        } : null,
+        // Map createdBy to ExtUserPtr with full user details
+        ExtUserPtr: extUserPtr,
         // Map folderId to Folder pointer
         Folder: document.folderId ? {
           __type: 'Pointer',
@@ -4253,10 +4437,24 @@ export function convertJpegToPng(base64Image, filename) {
 }
 //function is used to get assigned signer's email
 export const getSignerEmail = (data, signers) => {
-  const getEmail =
-    signers?.length > 0 &&
-    signers.find((x) => x.objectId === data.signerObjId)?.Email;
-  return getEmail;
+  if (!signers || signers.length === 0) {
+    return null;
+  }
+  
+  // Find signer by objectId (case-insensitive matching)
+  const signer = signers.find((x) => 
+    x.objectId === data.signerObjId || 
+    x.ObjectId === data.signerObjId ||
+    x.objectId === data.objectId ||
+    x.ObjectId === data.objectId
+  );
+  
+  if (signer) {
+    // Try both Email and email (case-insensitive)
+    return signer.Email || signer.email || null;
+  }
+  
+  return null;
 };
 
 //function is used to delete widgets

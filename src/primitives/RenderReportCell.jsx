@@ -149,9 +149,33 @@ export const RenderReportCell = ({
         </td>
       );
     case "Sent Date":
+      // Derive sent date from:
+      // 1. DocSentAt field (if exists)
+      // 2. First audit trail entry with "sent" activity
+      // 3. updatedAt when SignedUrl exists (document was sent for signing)
+      let sentDate = null;
+      
+      if (rowData?.DocSentAt) {
+        sentDate = rowData.DocSentAt?.iso || rowData.DocSentAt;
+      } else if (rowData?.AuditTrail && Array.isArray(rowData.AuditTrail)) {
+        // Find first "sent" or "Sent" activity in audit trail
+        const sentEntry = rowData.AuditTrail.find(entry => 
+          entry?.Activity?.toLowerCase() === "sent" ||
+          entry?.activity?.toLowerCase() === "sent"
+        );
+        if (sentEntry) {
+          sentDate = sentEntry.SignedOn || sentEntry.signedOn || sentEntry.timestamp || sentEntry.Timestamp;
+        }
+      }
+      
+      // If still no date and SignedUrl exists, use updatedAt as fallback
+      if (!sentDate && rowData?.SignedUrl && rowData?.updatedAt) {
+        sentDate = rowData.updatedAt;
+      }
+      
       return (
         <td key={col} className="p-2 text-center">
-          {rowData?.DocSentAt ? formatDate(rowData?.DocSentAt?.iso) : "-"}
+          {sentDate ? formatDate(sentDate) : "-"}
         </td>
       );
     case "Signers":

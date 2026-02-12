@@ -479,25 +479,49 @@ const DocumentsReport = (props) => {
     const encodeBase64 = userDetails?.objectId
       ? btoa(`${doc.objectId}/${userDetails.Email}/${userDetails.objectId}`)
       : btoa(`${doc.objectId}/${userDetails.Email}`);
-    const expireDate = doc.ExpiryDate?.iso || doc.ExpiryDate;
-    const newDate = new Date(expireDate);
-    const localExpireDate = newDate.toLocaleDateString("en-US", {
-      day: "numeric",
-      month: "long",
-      year: "numeric"
-    });
+    
+    // Handle ExpiryDate - convert from Parse format { iso: "..." } or Instant string
+    let localExpireDate = "";
+    if (doc.ExpiryDate) {
+      try {
+        const expiryDateValue = doc.ExpiryDate;
+        let expireDateStr = null;
+        
+        // Handle Parse format { iso: "..." } or { __type: "Date", iso: "..." }
+        if (typeof expiryDateValue === 'object' && expiryDateValue.iso) {
+          expireDateStr = expiryDateValue.iso;
+        } else if (typeof expiryDateValue === 'string') {
+          expireDateStr = expiryDateValue;
+        }
+        
+        if (expireDateStr) {
+          const newDate = new Date(expireDateStr);
+          if (!isNaN(newDate.getTime())) {
+            localExpireDate = newDate.toLocaleDateString("en-US", {
+              day: "numeric",
+              month: "long",
+              year: "numeric"
+            });
+          }
+        }
+      } catch (err) {
+        console.debug("Error parsing expiry date in handleSubjectChange:", err);
+        localExpireDate = "";
+      }
+    }
+    
     const signPdf = `${window.location.origin}/login/${encodeBase64}`;
     const variables = {
-      document_title: doc.Name,
-      note: doc?.Note || "",
-      sender_name: doc.ExtUserPtr?.Name || "",
-      sender_mail: doc.ExtUserPtr?.Email || "",
-      sender_phone: doc.ExtUserPtr?.Phone || "",
-      receiver_name: userDetails?.Name || "",
-      receiver_email: userDetails?.Email || "",
-      receiver_phone: userDetails?.Phone || "",
+      document_title: doc.Name || doc.name || "",
+      note: doc?.Note || doc?.note || "",
+      sender_name: doc.ExtUserPtr?.Name || doc.ExtUserPtr?.name || "",
+      sender_mail: doc.ExtUserPtr?.Email || doc.ExtUserPtr?.email || "",
+      sender_phone: doc.ExtUserPtr?.Phone || doc.ExtUserPtr?.phone || "",
+      receiver_name: userDetails?.Name || userDetails?.name || "",
+      receiver_email: userDetails?.Email || userDetails?.email || "",
+      receiver_phone: userDetails?.Phone || userDetails?.phone || "",
       expiry_date: localExpireDate,
-      company_name: doc.ExtUserPtr?.Company || "",
+      company_name: doc.ExtUserPtr?.Company || doc.ExtUserPtr?.company || "",
       signing_url: signPdf
     };
     const res = replaceMailVaribles(subject, "", variables);
@@ -513,25 +537,49 @@ const DocumentsReport = (props) => {
     const encodeBase64 = userDetails?.objectId
       ? btoa(`${doc.objectId}/${userDetails.Email}/${userDetails.objectId}`)
       : btoa(`${doc.objectId}/${userDetails.Email}`);
-    const expireDate = doc.ExpiryDate?.iso || doc.ExpiryDate;
-    const newDate = new Date(expireDate);
-    const localExpireDate = newDate.toLocaleDateString("en-US", {
-      day: "numeric",
-      month: "long",
-      year: "numeric"
-    });
+    
+    // Handle ExpiryDate - convert from Parse format { iso: "..." } or Instant string
+    let localExpireDate = "";
+    if (doc.ExpiryDate) {
+      try {
+        const expiryDateValue = doc.ExpiryDate;
+        let expireDateStr = null;
+        
+        // Handle Parse format { iso: "..." } or { __type: "Date", iso: "..." }
+        if (typeof expiryDateValue === 'object' && expiryDateValue.iso) {
+          expireDateStr = expiryDateValue.iso;
+        } else if (typeof expiryDateValue === 'string') {
+          expireDateStr = expiryDateValue;
+        }
+        
+        if (expireDateStr) {
+          const newDate = new Date(expireDateStr);
+          if (!isNaN(newDate.getTime())) {
+            localExpireDate = newDate.toLocaleDateString("en-US", {
+              day: "numeric",
+              month: "long",
+              year: "numeric"
+            });
+          }
+        }
+      } catch (err) {
+        console.debug("Error parsing expiry date in handlebodyChange:", err);
+        localExpireDate = "";
+      }
+    }
+    
     const signPdf = `${window.location.origin}/login/${encodeBase64}`;
     const variables = {
-      document_title: doc.Name,
-      note: doc?.Note || "",
-      sender_name: doc.ExtUserPtr?.Name || "",
-      sender_mail: doc.ExtUserPtr?.Email || "",
-      sender_phone: doc.ExtUserPtr?.Phone || "",
-      receiver_name: userDetails?.Name || "",
-      receiver_email: userDetails?.Email || "",
-      receiver_phone: userDetails?.Phone || "",
+      document_title: doc.Name || doc.name || "",
+      note: doc?.Note || doc?.note || "",
+      sender_name: doc.ExtUserPtr?.Name || doc.ExtUserPtr?.name || "",
+      sender_mail: doc.ExtUserPtr?.Email || doc.ExtUserPtr?.email || "",
+      sender_phone: doc.ExtUserPtr?.Phone || doc.ExtUserPtr?.phone || "",
+      receiver_name: userDetails?.Name || userDetails?.name || "",
+      receiver_email: userDetails?.Email || userDetails?.email || "",
+      receiver_phone: userDetails?.Phone || userDetails?.phone || "",
       expiry_date: localExpireDate,
-      company_name: doc.ExtUserPtr?.Company || "",
+      company_name: doc.ExtUserPtr?.Company || doc.ExtUserPtr?.company || "",
       signing_url: signPdf
     };
     const res = replaceMailVaribles("", body, variables);
@@ -544,8 +592,14 @@ const DocumentsReport = (props) => {
   // as well as replace variable with original one
   const handleNextBtn = async (user, doc) => {
     try {
-      // Extract email using same logic as display (line 1685-1687)
-      const email = user?.email || user?.signerPtr?.Email || "";
+      // Extract email - try multiple sources including Signers array
+      const email = 
+        user?.email || 
+        user?.Email || 
+        user?.signerPtr?.Email || 
+        user?.signerPtr?.email ||
+        getSignerEmail(user, doc?.Signers) ||
+        "";
       const emailTrimmed = email?.trim() || "";
       
       console.log("handleNextBtn called", {
@@ -554,46 +608,77 @@ const DocumentsReport = (props) => {
         emailTrimmed,
         userEmail: user?.email,
         signerPtrEmail: user?.signerPtr?.Email,
-        signerPtr: user?.signerPtr
+        signerPtr: user?.signerPtr,
+        signersArray: doc?.Signers
       });
       
       if (!emailTrimmed) {
-        console.error("handleNextBtn: No email found for user", { user });
+        console.error("handleNextBtn: No email found for user", { user, docSigners: doc?.Signers });
         showAlert("danger", "Cannot resend email: Signer email address is missing.");
         return;
       }
       
+      // Try to get signer data from Signers array first, then fallback to signerPtr
+      const signerFromArray = doc?.Signers?.find(s => 
+        s.objectId === user?.signerObjId || 
+        s.objectId === user?.objectId ||
+        s.objectId === user?.signerPtr?.objectId
+      );
+      
       const userdata = {
-        Name: user?.signerPtr?.Name || "",
+        Name: signerFromArray?.Name || signerFromArray?.name || user?.signerPtr?.Name || user?.signerPtr?.name || "",
         Email: emailTrimmed,
-        Phone: user?.signerPtr?.Phone || "",
-        objectId: user?.signerPtr?.objectId || ""
+        Phone: signerFromArray?.Phone || signerFromArray?.phone || user?.signerPtr?.Phone || user?.signerPtr?.phone || "",
+        objectId: user?.signerObjId || user?.signerPtr?.objectId || user?.objectId || ""
       };
       setUserDetails(userdata);
-      const encodeBase64 = user.email
-        ? btoa(`${doc.objectId}/${user.email}`)
-        : btoa(
-            `${doc.objectId}/${user.signerPtr.Email}/${user.signerPtr.objectId}`
-          );
-      const expireDate = doc.ExpiryDate?.iso || doc.ExpiryDate;
-      const newDate = new Date(expireDate);
-      const localExpireDate = newDate.toLocaleDateString("en-US", {
-        day: "numeric",
-        month: "long",
-        year: "numeric"
-      });
+      
+      const encodeBase64 = userdata.objectId
+        ? btoa(`${doc.objectId}/${emailTrimmed}/${userdata.objectId}`)
+        : btoa(`${doc.objectId}/${emailTrimmed}`);
+      
+      // Handle ExpiryDate - convert from Parse format { iso: "..." } or Instant string
+      let localExpireDate = "";
+      if (doc.ExpiryDate) {
+        try {
+          const expiryDateValue = doc.ExpiryDate;
+          let expireDateStr = null;
+          
+          // Handle Parse format { iso: "..." } or { __type: "Date", iso: "..." }
+          if (typeof expiryDateValue === 'object' && expiryDateValue.iso) {
+            expireDateStr = expiryDateValue.iso;
+          } else if (typeof expiryDateValue === 'string') {
+            expireDateStr = expiryDateValue;
+          }
+          
+          if (expireDateStr) {
+            const newDate = new Date(expireDateStr);
+            if (!isNaN(newDate.getTime())) {
+              localExpireDate = newDate.toLocaleDateString("en-US", {
+                day: "numeric",
+                month: "long",
+                year: "numeric"
+              });
+            }
+          }
+        } catch (err) {
+          console.debug("Error parsing expiry date in handleNextBtn:", err);
+          localExpireDate = "";
+        }
+      }
+      
       const signPdf = `${window.location.origin}/login/${encodeBase64}`;
       const variables = {
-        document_title: doc.Name,
-        note: doc?.Note || "",
-        sender_name: doc.ExtUserPtr?.Name || "",
-        sender_mail: doc.ExtUserPtr?.Email || "",
-        sender_phone: doc.ExtUserPtr?.Phone || "",
-        receiver_name: user?.signerPtr?.Name || "",
-        receiver_email: user?.email ? user?.email : user?.signerPtr?.Email,
-        receiver_phone: user?.signerPtr?.Phone || "",
+        document_title: doc.Name || doc.name || "",
+        note: doc?.Note || doc?.note || "",
+        sender_name: doc.ExtUserPtr?.Name || doc.ExtUserPtr?.name || "",
+        sender_mail: doc.ExtUserPtr?.Email || doc.ExtUserPtr?.email || "",
+        sender_phone: doc.ExtUserPtr?.Phone || doc.ExtUserPtr?.phone || "",
+        receiver_name: userdata.Name || "",
+        receiver_email: emailTrimmed,
+        receiver_phone: userdata.Phone || "",
         expiry_date: localExpireDate,
-        company_name: doc?.ExtUserPtr?.Company || "",
+        company_name: doc?.ExtUserPtr?.Company || doc?.ExtUserPtr?.company || "",
         signing_url: signPdf
       };
       
@@ -675,8 +760,12 @@ const DocumentsReport = (props) => {
     // Try multiple paths to find the email address, same logic as display in UI (line 1685-1687)
     const recipientEmailRaw = 
       userDetails?.Email || 
+      userDetails?.email ||
       user?.email || 
-      user?.signerPtr?.Email ||
+      user?.Email ||
+      user?.signerPtr?.Email || 
+      user?.signerPtr?.email ||
+      getSignerEmail(user, doc?.Signers) ||
       "";
     
     // Trim and validate email
@@ -863,8 +952,25 @@ const DocumentsReport = (props) => {
     }
   };
   const fetchUserStatus = (user, doc) => {
-    const email = user.email ? user.email : user.signerPtr.Email;
-    const audit = doc?.AuditTrail?.find((x) => x.UserPtr.Email === email);
+    // Extract email - try multiple sources including Signers array
+    const email = 
+      user?.email || 
+      user?.Email || 
+      user?.signerPtr?.Email || 
+      user?.signerPtr?.email ||
+      getSignerEmail(user, doc?.Signers) ||
+      "";
+    
+    // Find audit entry - handle both old and new UserPtr formats
+    const audit = doc?.AuditTrail?.find((x) => 
+      x.UserPtr?.Email === email ||
+      x.UserPtr?.email === email ||
+      x.userPtr?.Email === email ||
+      x.userPtr?.email === email ||
+      x.UserPtr?.objectId === user?.signerObjId ||
+      x.UserPtr?.UserId?.objectId === user?.signerObjId ||
+      x.userPtr?.objectId === user?.signerObjId
+    );
 
     return (
       <div className="flex flex-row gap-2 justify-center items-center">
@@ -1753,10 +1859,52 @@ const DocumentsReport = (props) => {
                           }
                           handleClose={handleResendClose}
                         >
-                            <div className="overflow-y-auto max-h-[340px] md:max-h-[400px]">
-                              {item?.Placeholders?.filter(
-                                (user) => user?.Role !== "prefill"
-                              )?.map((user) => (
+                            <div className="overflow-y-auto max-h-[340px] md:max-h-[400px] p-2">
+                              {(() => {
+                                // Debug: Log the item data to help diagnose
+                                console.log("Resend modal - item data:", {
+                                  hasPlaceholders: !!item?.Placeholders,
+                                  placeholdersLength: item?.Placeholders?.length || 0,
+                                  hasSigners: !!item?.Signers,
+                                  signersLength: item?.Signers?.length || 0,
+                                  itemObjectId: item?.objectId
+                                });
+                                
+                                // Get non-prefill placeholders
+                                // Get non-prefill placeholders
+                                let nonPrefillPlaceholders = item?.Placeholders?.filter(
+                                  (user) => user?.Role !== "prefill"
+                                ) || [];
+                                
+                                // If no placeholders but Signers exist, create placeholder-like structure from Signers
+                                if (nonPrefillPlaceholders.length === 0 && item?.Signers?.length > 0) {
+                                  nonPrefillPlaceholders = item.Signers.map((signer, index) => ({
+                                    Id: signer.objectId || `signer-${index}`,
+                                    email: signer.email || signer.Email || "",
+                                    Email: signer.Email || signer.email || "",
+                                    signerPtr: {
+                                      Name: signer.name || signer.Name || "",
+                                      Email: signer.email || signer.Email || "",
+                                      Phone: signer.phone || signer.Phone || "",
+                                      objectId: signer.objectId
+                                    },
+                                    signerObjId: signer.objectId,
+                                    objectId: signer.objectId,
+                                    Role: "signer"
+                                  }));
+                                }
+                                
+                                // If still no placeholders, show message
+                                if (nonPrefillPlaceholders.length === 0) {
+                                  return (
+                                    <div className="p-4 text-center text-base-content">
+                                      <p>{t("no-signers-available") || "No signers available for this document."}</p>
+                                    </div>
+                                  );
+                                }
+                                
+                                // Map through placeholders
+                                return nonPrefillPlaceholders.map((user) => (
                                 <React.Fragment key={user.Id}>
                                   {isNextStep[user.Id] && (
                                     <div className="relative ">
@@ -1839,18 +1987,26 @@ const DocumentsReport = (props) => {
                                   {!isNextStep[user.Id] && (
                                     <div className="flex justify-between items-center gap-2 my-2 px-3">
                                       <div className="text-base-content">
-                                        {user?.signerPtr?.Name || "-"}{" "}
+                                        {user?.signerPtr?.Name || 
+                                         user?.signerPtr?.name || 
+                                         (item?.Signers?.find(s => s.objectId === user?.signerObjId)?.Name) ||
+                                         (item?.Signers?.find(s => s.objectId === user?.signerObjId)?.name) ||
+                                         "-"}{" "}
                                         {`<${
-                                          user?.email
-                                            ? user.email
-                                            : user.signerPtr.Email
+                                          user?.email || 
+                                          user?.Email || 
+                                          user?.signerPtr?.Email || 
+                                          user?.signerPtr?.email ||
+                                          getSignerEmail(user, item?.Signers) ||
+                                          "-"
                                         }>`}
                                       </div>
                                       <>{fetchUserStatus(user, item)}</>
                                     </div>
                                   )}
                                 </React.Fragment>
-                              ))}
+                                ));
+                              })()}
                             </div>
                         </ModalUi>
                       )}

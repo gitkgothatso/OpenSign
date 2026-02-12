@@ -1,5 +1,6 @@
 // src/services/reportService.js
 import apiClient from '../config/api';
+import { contactService } from './contactService';
 
 export const reportService = {
   /**
@@ -75,6 +76,7 @@ export const reportService = {
         }
         
         // For documents, use standard transformation
+        // Note: Signers will be expanded in the transformed array below
         return {
           objectId: doc.objectId,
           Name: doc.name,
@@ -89,17 +91,9 @@ export const reportService = {
           updatedAt: doc.updatedAt,
           IsCompleted: doc.isCompleted || false,
           IsDeclined: doc.isDeclined || false,
-          Signers: doc.signers ? doc.signers.map(signer => ({
-            objectId: signer.objectId,
-            Name: signer.name,
-            Email: signer.email,
-            Phone: signer.phone,
-            UserId: signer.userId ? {
-              objectId: signer.userId.objectId,
-              __type: 'Pointer',
-              className: 'contracts_Users'
-            } : null
-          })) : [],
+          Signers: doc.signers || [],
+          // Store raw signers for expansion
+          _rawSigners: doc.signers || [],
           AuditTrail: doc.auditTrail ? doc.auditTrail.map(entry => ({
             Activity: entry.activity,
             ActivityDate: entry.activityDate ? {
@@ -120,15 +114,104 @@ export const reportService = {
             className: 'contracts_Folder'
           } : null,
           ExtUserPtr: doc.extUserPtr ? {
-            Name: doc.extUserPtr.name,
-            Email: doc.extUserPtr.email,
+            objectId: doc.extUserPtr.objectId || doc.createdBy || null,
+            Name: doc.extUserPtr.name || "",
+            Email: doc.extUserPtr.email || "",
+            Phone: doc.extUserPtr.phone || "",
+            Company: doc.extUserPtr.company || "",
+            JobTitle: doc.extUserPtr.jobTitle || "",
             __type: 'Pointer',
             className: 'contracts_Users'
           } : null
         };
         });
         
-        return transformed;
+        // Expand signers for documents (if they're pointers)
+        const expandedTransformed = await Promise.all(
+          transformed.map(async (doc) => {
+            // Skip expansion for contacts report
+            if (reportId === 'contacts') {
+              return doc;
+            }
+            
+            // Expand signers if they're pointers (missing name/email)
+            if (doc.Signers && Array.isArray(doc.Signers) && doc.Signers.length > 0) {
+              const expandedSigners = await Promise.all(
+                doc.Signers.map(async (signer) => {
+                  // Check if signer already has name or email (case-insensitive, handle empty strings)
+                  const hasName = (signer.name && signer.name.trim()) || (signer.Name && signer.Name.trim());
+                  const hasEmail = (signer.email && signer.email.trim()) || (signer.Email && signer.Email.trim());
+                  
+                  // If signer already has name or email, it's already expanded
+                  if (hasName || hasEmail) {
+                    return {
+                      objectId: signer.objectId,
+                      Name: signer.name || signer.Name || "",
+                      Email: signer.email || signer.Email || "",
+                      Phone: signer.phone || signer.Phone || "",
+                      UserId: signer.userId ? {
+                        objectId: signer.userId.objectId,
+                        __type: 'Pointer',
+                        className: 'contracts_Users'
+                      } : null
+                    };
+                  }
+                  
+                  // If signer is a pointer (only has objectId, missing name/email), fetch contact details
+                  const signerObjectId = signer.objectId;
+                  if (signerObjectId) {
+                    try {
+                      const contact = await contactService.getContact(signerObjectId);
+                      if (contact) {
+                        return {
+                          objectId: signerObjectId,
+                          Name: contact.name || contact.Name || "",
+                          Email: contact.email || contact.Email || "",
+                          Phone: contact.phone || contact.Phone || "",
+                          UserId: signer.userId ? {
+                            objectId: signer.userId.objectId,
+                            __type: 'Pointer',
+                            className: 'contracts_Users'
+                          } : null
+                        };
+                      } else {
+                        console.debug(`Contact not found for signer in report: ${signerObjectId}`);
+                      }
+                    } catch (err) {
+                      console.debug(`Error fetching contact for signer in report: ${signerObjectId}`, err);
+                    }
+                  }
+                  
+                  // Return signer as-is if expansion fails (with empty name/email)
+                  return {
+                    objectId: signer.objectId || "",
+                    Name: signer.name || signer.Name || "",
+                    Email: signer.email || signer.Email || "",
+                    Phone: signer.phone || signer.Phone || "",
+                    UserId: signer.userId ? {
+                      objectId: signer.userId.objectId,
+                      __type: 'Pointer',
+                      className: 'contracts_Users'
+                    } : null
+                  };
+                })
+              );
+              
+              // Remove _rawSigners and update Signers
+              const { _rawSigners, ...docWithoutRaw } = doc;
+              return {
+                ...docWithoutRaw,
+                Signers: expandedSigners
+              };
+            }
+            
+            // Remove _rawSigners if it exists
+            const { _rawSigners, ...docWithoutRaw } = doc;
+            return docWithoutRaw;
+          })
+        );
+        
+        return expandedTransformed;
       }
       
       // If response.data is not an array, return it as-is (shouldn't happen)

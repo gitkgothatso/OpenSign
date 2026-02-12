@@ -4,6 +4,7 @@ import authService from "../services/authService";
 import documentService from "../services/documentService";
 import emailService from "../services/emailService";
 import userService from "../services/userService";
+import { contactService } from "../services/contactService";
 import "../styles/signature.css";
 import { PDFDocument } from "pdf-lib";
 import RenderAllPdfPage from "../components/pdf/RenderAllPdfPage";
@@ -342,7 +343,15 @@ function PlaceHolderSign() {
           ...x,
           Id: placeholder[index]?.Id,
           Role: placeholder[index]?.Role,
-          blockColor: placeholder[index]?.blockColor
+          blockColor: placeholder[index]?.blockColor,
+          // Explicitly preserve Email field (case-insensitive)
+          Email: x.Email || x.email || placeholder[index]?.Email || placeholder[index]?.email || "",
+          email: x.email || x.Email || placeholder[index]?.email || placeholder[index]?.Email || "",
+          // Preserve other fields
+          Name: x.Name || x.name || "",
+          Phone: x.Phone || x.phone || "",
+          Company: x.Company || x.company || "",
+          JobTitle: x.JobTitle || x.jobTitle || ""
         }));
         setPrefillSigner([utils?.prefillObj()]);
         setSignerPos(placeholder);
@@ -370,30 +379,69 @@ function PlaceHolderSign() {
           const prefillPlaceholder = documentData[0]?.Placeholders.find(
             (data) => data.Role === "prefill"
           );
-          let updatedSigners = placeholder.map((x) => {
+          // Map placeholders to signers, ensuring Email field is always preserved
+          let updatedSigners = await Promise.all(placeholder.map(async (x) => {
             let matchingSigner = signers.find(
               (y) => x.signerObjId && x.signerObjId === y.objectId
             );
             if (matchingSigner) {
+              // Ensure Email field is preserved from matching signer
               return {
                 ...matchingSigner,
                 Role: x.Role ? x.Role : matchingSigner.Role,
                 Id: x.Id,
-                blockColor: x.blockColor
+                blockColor: x.blockColor,
+                // Explicitly preserve Email field (case-insensitive)
+                Email: matchingSigner.Email || matchingSigner.email || "",
+                email: matchingSigner.email || matchingSigner.Email || "",
+                // Preserve other fields
+                Name: matchingSigner.Name || matchingSigner.name || "",
+                Phone: matchingSigner.Phone || matchingSigner.phone || "",
+                Company: matchingSigner.Company || matchingSigner.company || "",
+                JobTitle: matchingSigner.JobTitle || matchingSigner.jobTitle || ""
               };
             } else {
-              // When no matching signer, include email from placeholder if available
+              // When no matching signer, try to get email from placeholder first
+              let signerEmail = x.Email || x.email || "";
+              let signerName = x.Name || x.name || "";
+              let signerPhone = x.Phone || x.phone || "";
+              let signerCompany = x.Company || x.company || "";
+              let signerJobTitle = x.JobTitle || x.jobTitle || "";
+              
+              // If no email in placeholder but we have signerObjId, fetch from contactbook
+              if (!signerEmail && x.signerObjId) {
+                try {
+                  const contact = await contactService.getContact(x.signerObjId);
+                  if (contact) {
+                    signerEmail = contact.email || contact.Email || "";
+                    signerName = contact.name || contact.Name || signerName;
+                    signerPhone = contact.phone || contact.Phone || signerPhone;
+                    signerCompany = contact.company || contact.Company || signerCompany;
+                    signerJobTitle = contact.jobTitle || contact.JobTitle || signerJobTitle;
+                  }
+                } catch (err) {
+                  console.debug(`Could not fetch contact ${x.signerObjId} for email:`, err);
+                  // Continue without email - will be skipped in email sending
+                }
+              }
+              
               return { 
                 Role: x.Role, 
                 Id: x.Id, 
                 blockColor: x.blockColor,
-                email: x.email || x.Email || "",
-                Email: x.Email || x.email || "",
+                email: signerEmail,
+                Email: signerEmail,
+                Name: signerName,
+                Phone: signerPhone,
+                Company: signerCompany,
+                JobTitle: signerJobTitle,
                 signerPtr: x.signerPtr,
-                signerObjId: x.signerObjId
+                signerObjId: x.signerObjId,
+                objectId: x.signerObjId,
+                className: x.signerPtr?.className || "contracts_Contactbook"
               };
             }
-          });
+          }));
           if (prefillPlaceholder) {
             setPrefillSigner([utils?.prefillObj(prefillPlaceholder.Id)]);
           } else {
@@ -410,7 +458,15 @@ function PlaceHolderSign() {
             ...x,
             Id: randomId(),
             // Role: "User " + (index + 1),
-            blockColor: color[index % color.length]
+            blockColor: color[index % color.length],
+            // Explicitly preserve Email field (case-insensitive)
+            Email: x.Email || x.email || "",
+            email: x.email || x.Email || "",
+            // Preserve other fields
+            Name: x.Name || x.name || "",
+            Phone: x.Phone || x.phone || "",
+            Company: x.Company || x.company || "",
+            JobTitle: x.JobTitle || x.jobTitle || ""
           }));
           setPrefillSigner([utils?.prefillObj()]);
           const updatedPlaceholder = documentData[0].Signers.map((x, index) => {
@@ -446,9 +502,47 @@ function PlaceHolderSign() {
           );
           setSignerPos(documentData[0].Placeholders);
           if (placeholder.length > 0) {
-            let updatedSigners = placeholder.map((x) => {
-              return { Role: x.Role, Id: x.Id, blockColor: x.blockColor };
-            });
+            // Map placeholders to signers, fetching contact details if signerObjId exists
+            let updatedSigners = await Promise.all(placeholder.map(async (x) => {
+              let signerEmail = x.Email || x.email || "";
+              let signerName = x.Name || x.name || "";
+              let signerPhone = x.Phone || x.phone || "";
+              let signerCompany = x.Company || x.company || "";
+              let signerJobTitle = x.JobTitle || x.jobTitle || "";
+              
+              // If no email in placeholder but we have signerObjId, fetch from contactbook
+              if (!signerEmail && x.signerObjId) {
+                try {
+                  const contact = await contactService.getContact(x.signerObjId);
+                  if (contact) {
+                    signerEmail = contact.email || contact.Email || "";
+                    signerName = contact.name || contact.Name || signerName;
+                    signerPhone = contact.phone || contact.Phone || signerPhone;
+                    signerCompany = contact.company || contact.Company || signerCompany;
+                    signerJobTitle = contact.jobTitle || contact.JobTitle || signerJobTitle;
+                  }
+                } catch (err) {
+                  console.debug(`Could not fetch contact ${x.signerObjId} for email:`, err);
+                  // Continue without email - will be skipped in email sending
+                }
+              }
+              
+              return { 
+                Role: x.Role, 
+                Id: x.Id, 
+                blockColor: x.blockColor,
+                email: signerEmail,
+                Email: signerEmail,
+                Name: signerName,
+                Phone: signerPhone,
+                Company: signerCompany,
+                JobTitle: signerJobTitle,
+                signerPtr: x.signerPtr,
+                signerObjId: x.signerObjId,
+                objectId: x.signerObjId,
+                className: x.signerPtr?.className || "contracts_Contactbook"
+              };
+            }));
             setSignersData(updatedSigners);
             setIsSelectId(0);
             setUniqueId(updatedSigners[0].Id);
@@ -1300,27 +1394,89 @@ function PlaceHolderSign() {
     setIsUiLoading(true);
     setIsSendAlert({});
     let sendMail;
-    const expireDate = pdfDetails?.[0].ExpiryDate.iso;
-    const newDate = new Date(expireDate);
-    const localExpireDate = newDate.toLocaleDateString("en-US", {
-      day: "numeric",
-      month: "long",
-      year: "numeric"
-    });
+    
+    // Handle ExpiryDate - convert from Parse format { iso: "..." } or Instant string
+    let localExpireDate = "";
+    if (pdfDetails?.[0]?.ExpiryDate) {
+      try {
+        const expiryDateValue = pdfDetails[0].ExpiryDate;
+        let expireDateStr = null;
+        
+        // Handle Parse format { iso: "..." } or { __type: "Date", iso: "..." }
+        if (typeof expiryDateValue === 'object' && expiryDateValue.iso) {
+          expireDateStr = expiryDateValue.iso;
+        } else if (typeof expiryDateValue === 'string') {
+          expireDateStr = expiryDateValue;
+        }
+        
+        if (expireDateStr) {
+          const newDate = new Date(expireDateStr);
+          if (!isNaN(newDate.getTime())) {
+            localExpireDate = newDate.toLocaleDateString("en-US", {
+              day: "numeric",
+              month: "long",
+              year: "numeric"
+            });
+          }
+        }
+      } catch (err) {
+        console.debug("Error parsing expiry date:", err);
+        localExpireDate = "";
+      }
+    }
 
-    let senderEmail =
-      pdfDetails?.[0]?.ExtUserPtr?.Email;
-    let senderPhone = pdfDetails?.[0]?.ExtUserPtr?.Phone;
-    // Filter out prefill signers - they don't need emails sent
+    // Extract sender details from ExtUserPtr with fallbacks
+    let senderEmail = 
+      pdfDetails?.[0]?.ExtUserPtr?.Email || 
+      pdfDetails?.[0]?.ExtUserPtr?.email || 
+      "";
+    let senderPhone = 
+      pdfDetails?.[0]?.ExtUserPtr?.Phone || 
+      pdfDetails?.[0]?.ExtUserPtr?.phone || 
+      "";
+    let senderName = 
+      pdfDetails?.[0]?.ExtUserPtr?.Name || 
+      pdfDetails?.[0]?.ExtUserPtr?.name || 
+      senderEmail || 
+      "";
+    
+    // Get signers from state, but merge with pdfDetails[0].Signers for complete data
+    // This ensures we have Email and other fields even if signersdata is out of sync
     let signerMail = signersdata.filter((x) => x.Role !== "prefill");
+  
+    // Merge with pdfDetails[0].Signers to get complete signer data
+    const pdfSigners = pdfDetails?.[0]?.Signers || [];
+    signerMail = signerMail.map(signer => {
+      // Find matching signer in pdfDetails by objectId
+      const pdfSigner = pdfSigners.find(ps => 
+        ps.objectId === signer.objectId || 
+        ps.objectId === signer.signerObjId ||
+        (ps.Email && (ps.Email === signer.Email || ps.Email === signer.email))
+      );
+      
+      // Merge: use signer (from state) as base, but fill in missing fields from pdfSigner
+      return {
+        ...signer,
+        // Prioritize pdfSigner data for contact fields, but keep signer's UI fields
+        Email: signer.Email || signer.email || pdfSigner?.Email || pdfSigner?.email || "",
+        email: signer.email || signer.Email || pdfSigner?.email || pdfSigner?.Email || "",
+        Name: signer.Name || signer.name || pdfSigner?.Name || pdfSigner?.name || "",
+        Phone: signer.Phone || signer.phone || pdfSigner?.Phone || pdfSigner?.phone || "",
+        Company: signer.Company || signer.company || pdfSigner?.Company || pdfSigner?.company || "",
+        JobTitle: signer.JobTitle || signer.jobTitle || pdfSigner?.JobTitle || pdfSigner?.jobTitle || "",
+        // Ensure objectId is present
+        objectId: signer.objectId || signer.signerObjId || pdfSigner?.objectId || "",
+        signerObjId: signer.signerObjId || signer.objectId || pdfSigner?.objectId || ""
+      };
+    });
+  
     if (pdfDetails?.[0]?.SendinOrder && pdfDetails?.[0]?.SendinOrder === true) {
       signerMail.splice(1);
     }
 
     for (let i = 0; i < signerMail.length; i++) {
       try {
-        // Extract recipient email early - try multiple paths to find email
-        // First try from signer data
+        // Extract recipient email - now we have merged data, so this should work
         let recipientEmailRaw = 
           signerMail[i]?.Email || 
           signerMail[i]?.email ||
@@ -1336,6 +1492,21 @@ function PlaceHolderSign() {
             const matchingPlaceholder = signerPos.find(p => p.Id === signerId && p.Role !== "prefill");
             if (matchingPlaceholder) {
               recipientEmailRaw = matchingPlaceholder.email || matchingPlaceholder.Email || "";
+            }
+          }
+        }
+        
+        // If still no email and we have objectId, try fetching from contactbook
+        if (!recipientEmailRaw || recipientEmailRaw.trim() === "") {
+          const objectId = signerMail[i].objectId || signerMail[i].signerObjId;
+          if (objectId) {
+            try {
+              const contact = await contactService.getContact(objectId);
+              if (contact) {
+                recipientEmailRaw = contact.email || contact.Email || "";
+              }
+            } catch (err) {
+              console.debug(`Could not fetch contact ${objectId} for email:`, err);
             }
           }
         }
@@ -1372,12 +1543,12 @@ function PlaceHolderSign() {
           `${pdfDetails?.[0].objectId}/${recipientEmail}/${objectId}`
         );
         let signPdf = `${hostUrl}/login/${encodeBase64}`;
-        const orgName = pdfDetails[0]?.ExtUserPtr.Company
-          ? pdfDetails[0].ExtUserPtr.Company
-          : "";
-        const senderName =
-          pdfDetails?.[0].ExtUserPtr.Name;
-        const documentName = `${pdfDetails?.[0].Name}`;
+        const orgName = 
+          pdfDetails[0]?.ExtUserPtr?.Company || 
+          pdfDetails[0]?.ExtUserPtr?.company || 
+          "";
+        // senderName is already defined at the top of the function
+        const documentName = `${pdfDetails?.[0].Name || pdfDetails?.[0].name || ""}`;
         let replaceVar;
 
         if (

@@ -22,7 +22,8 @@ import {
   signatureTypes,
   createDocument,
   defaultMailBody,
-  defaultMailSubject
+  defaultMailSubject,
+  getSignerEmail
 } from "../../constant/Utils";
 import EditorToolbar, {
   module1,
@@ -530,27 +531,49 @@ const TemplatesReport = (props) => {
     const encodeBase64 = userDetails?.objectId
       ? btoa(`${doc.objectId}/${userDetails.Email}/${userDetails.objectId}`)
       : btoa(`${doc.objectId}/${userDetails.Email}`);
-    const expireDate = doc.ExpiryDate.iso;
-    const newDate = new Date(expireDate);
-    const localExpireDate = newDate.toLocaleDateString("en-US", {
-      day: "numeric",
-      month: "long",
-      year: "numeric"
-    });
+    
+    // Handle ExpiryDate - convert from Parse format { iso: "..." } or Instant string
+    let localExpireDate = "";
+    if (doc.ExpiryDate) {
+      try {
+        const expiryDateValue = doc.ExpiryDate;
+        let expireDateStr = null;
+        
+        // Handle Parse format { iso: "..." } or { __type: "Date", iso: "..." }
+        if (typeof expiryDateValue === 'object' && expiryDateValue.iso) {
+          expireDateStr = expiryDateValue.iso;
+        } else if (typeof expiryDateValue === 'string') {
+          expireDateStr = expiryDateValue;
+        }
+        
+        if (expireDateStr) {
+          const newDate = new Date(expireDateStr);
+          if (!isNaN(newDate.getTime())) {
+            localExpireDate = newDate.toLocaleDateString("en-US", {
+              day: "numeric",
+              month: "long",
+              year: "numeric"
+            });
+          }
+        }
+      } catch (err) {
+        console.debug("Error parsing expiry date in handleSubjectChange:", err);
+        localExpireDate = "";
+      }
+    }
+    
     const signPdf = `${window.location.origin}/login/${encodeBase64}`;
     const variables = {
-      document_title: doc.Name,
-      note: doc?.Note || "",
-      sender_name:
-        doc.ExtUserPtr.Name,
-      sender_mail:
-        doc.ExtUserPtr.Email,
-      sender_phone: doc.ExtUserPtr?.Phone || "",
-      receiver_name: userDetails?.Name || "",
-      receiver_email: userDetails?.Email,
-      receiver_phone: userDetails?.Phone || "",
+      document_title: doc.Name || doc.name || "",
+      note: doc?.Note || doc?.note || "",
+      sender_name: doc.ExtUserPtr?.Name || doc.ExtUserPtr?.name || "",
+      sender_mail: doc.ExtUserPtr?.Email || doc.ExtUserPtr?.email || "",
+      sender_phone: doc.ExtUserPtr?.Phone || doc.ExtUserPtr?.phone || "",
+      receiver_name: userDetails?.Name || userDetails?.name || "",
+      receiver_email: userDetails?.Email || userDetails?.email || "",
+      receiver_phone: userDetails?.Phone || userDetails?.phone || "",
       expiry_date: localExpireDate,
-      company_name: doc.ExtUserPtr.Company,
+      company_name: doc.ExtUserPtr?.Company || doc.ExtUserPtr?.company || "",
       signing_url: signPdf
     };
     const res = replaceMailVaribles(subject, "", variables);
@@ -561,27 +584,49 @@ const TemplatesReport = (props) => {
     const encodeBase64 = userDetails?.objectId
       ? btoa(`${doc.objectId}/${userDetails.Email}/${userDetails.objectId}`)
       : btoa(`${doc.objectId}/${userDetails.Email}`);
-    const expireDate = doc.ExpiryDate.iso;
-    const newDate = new Date(expireDate);
-    const localExpireDate = newDate.toLocaleDateString("en-US", {
-      day: "numeric",
-      month: "long",
-      year: "numeric"
-    });
+    
+    // Handle ExpiryDate - convert from Parse format { iso: "..." } or Instant string
+    let localExpireDate = "";
+    if (doc.ExpiryDate) {
+      try {
+        const expiryDateValue = doc.ExpiryDate;
+        let expireDateStr = null;
+        
+        // Handle Parse format { iso: "..." } or { __type: "Date", iso: "..." }
+        if (typeof expiryDateValue === 'object' && expiryDateValue.iso) {
+          expireDateStr = expiryDateValue.iso;
+        } else if (typeof expiryDateValue === 'string') {
+          expireDateStr = expiryDateValue;
+        }
+        
+        if (expireDateStr) {
+          const newDate = new Date(expireDateStr);
+          if (!isNaN(newDate.getTime())) {
+            localExpireDate = newDate.toLocaleDateString("en-US", {
+              day: "numeric",
+              month: "long",
+              year: "numeric"
+            });
+          }
+        }
+      } catch (err) {
+        console.debug("Error parsing expiry date in handlebodyChange:", err);
+        localExpireDate = "";
+      }
+    }
+    
     const signPdf = `${window.location.origin}/login/${encodeBase64}`;
     const variables = {
-      document_title: doc.Name,
-      note: doc?.Note || "",
-      sender_name:
-        doc.ExtUserPtr.Name,
-      sender_mail:
-        doc.ExtUserPtr.Email,
-      sender_phone: doc.ExtUserPtr?.Phone || "",
-      receiver_name: userDetails?.Name || "",
-      receiver_email: userDetails?.Email || "",
-      receiver_phone: userDetails?.Phone || "",
+      document_title: doc.Name || doc.name || "",
+      note: doc?.Note || doc?.note || "",
+      sender_name: doc.ExtUserPtr?.Name || doc.ExtUserPtr?.name || "",
+      sender_mail: doc.ExtUserPtr?.Email || doc.ExtUserPtr?.email || "",
+      sender_phone: doc.ExtUserPtr?.Phone || doc.ExtUserPtr?.phone || "",
+      receiver_name: userDetails?.Name || userDetails?.name || "",
+      receiver_email: userDetails?.Email || userDetails?.email || "",
+      receiver_phone: userDetails?.Phone || userDetails?.phone || "",
       expiry_date: localExpireDate,
-      company_name: doc.ExtUserPtr.Company,
+      company_name: doc.ExtUserPtr?.Company || doc.ExtUserPtr?.company || "",
       signing_url: signPdf
     };
     const res = replaceMailVaribles("", body, variables);
@@ -593,39 +638,81 @@ const TemplatesReport = (props) => {
   // `handleNextBtn` is used to open edit mail template screen in resend mail modal
   // as well as replace variable with original one
   const handleNextBtn = (user, doc) => {
+    // Extract email - try multiple sources
+    const email = 
+      user?.email || 
+      user?.Email || 
+      user?.signerPtr?.Email || 
+      user?.signerPtr?.email ||
+      getSignerEmail(user, doc?.Signers) ||
+      "";
+    const emailTrimmed = email?.trim() || "";
+    
+    // Try to get signer data from Signers array first, then fallback to signerPtr
+    const signerFromArray = doc?.Signers?.find(s => 
+      s.objectId === user?.signerObjId || 
+      s.objectId === user?.objectId ||
+      s.objectId === user?.signerPtr?.objectId
+    );
+    
     const userdata = {
-      Name: user?.signerPtr?.Name,
-      Email: user.email ? user?.email : user.signerPtr?.Email,
-      Phone: user?.signerPtr?.Phone,
-      objectId: user?.signerPtr?.objectId
+      Name: signerFromArray?.Name || signerFromArray?.name || user?.signerPtr?.Name || user?.signerPtr?.name || "",
+      Email: emailTrimmed || (user.email ? user?.email : user.signerPtr?.Email) || "",
+      Phone: signerFromArray?.Phone || signerFromArray?.phone || user?.signerPtr?.Phone || user?.signerPtr?.phone || "",
+      objectId: user?.signerObjId || user?.signerPtr?.objectId || user?.objectId || ""
     };
     setUserDetails(userdata);
-    const encodeBase64 = user.email
-      ? btoa(`${doc.objectId}/${user.email}`)
-      : btoa(
-          `${doc.objectId}/${user.signerPtr.Email}/${user.signerPtr.objectId}`
-        );
-    const expireDate = doc.ExpiryDate.iso;
-    const newDate = new Date(expireDate);
-    const localExpireDate = newDate.toLocaleDateString("en-US", {
-      day: "numeric",
-      month: "long",
-      year: "numeric"
-    });
+    
+    const encodeBase64 = userdata.objectId && emailTrimmed
+      ? btoa(`${doc.objectId}/${emailTrimmed}/${userdata.objectId}`)
+      : emailTrimmed
+        ? btoa(`${doc.objectId}/${emailTrimmed}`)
+        : user.email
+          ? btoa(`${doc.objectId}/${user.email}`)
+          : btoa(`${doc.objectId}/${user.signerPtr.Email}/${user.signerPtr.objectId}`);
+    
+    // Handle ExpiryDate - convert from Parse format { iso: "..." } or Instant string
+    let localExpireDate = "";
+    if (doc.ExpiryDate) {
+      try {
+        const expiryDateValue = doc.ExpiryDate;
+        let expireDateStr = null;
+        
+        // Handle Parse format { iso: "..." } or { __type: "Date", iso: "..." }
+        if (typeof expiryDateValue === 'object' && expiryDateValue.iso) {
+          expireDateStr = expiryDateValue.iso;
+        } else if (typeof expiryDateValue === 'string') {
+          expireDateStr = expiryDateValue;
+        }
+        
+        if (expireDateStr) {
+          const newDate = new Date(expireDateStr);
+          if (!isNaN(newDate.getTime())) {
+            localExpireDate = newDate.toLocaleDateString("en-US", {
+              day: "numeric",
+              month: "long",
+              year: "numeric"
+            });
+          }
+        }
+      } catch (err) {
+        console.debug("Error parsing expiry date in handleNextBtn:", err);
+        localExpireDate = "";
+      }
+    }
+    
     const signPdf = `${window.location.origin}/login/${encodeBase64}`;
     const variables = {
-      document_title: doc.Name,
-      note: doc?.Note || "",
-      sender_name:
-        doc.ExtUserPtr.Name,
-      sender_mail:
-        doc.ExtUserPtr.Email,
-      sender_phone: doc.ExtUserPtr?.Phone || "",
-      receiver_name: user?.signerPtr?.Name || "",
-      receiver_email: user?.email ? user?.email : user?.signerPtr?.Email,
-      receiver_phone: user?.signerPtr?.Phone || "",
+      document_title: doc.Name || doc.name || "",
+      note: doc?.Note || doc?.note || "",
+      sender_name: doc.ExtUserPtr?.Name || doc.ExtUserPtr?.name || "",
+      sender_mail: doc.ExtUserPtr?.Email || doc.ExtUserPtr?.email || "",
+      sender_phone: doc.ExtUserPtr?.Phone || doc.ExtUserPtr?.phone || "",
+      receiver_name: userdata.Name || "",
+      receiver_email: emailTrimmed || userdata.Email || "",
+      receiver_phone: userdata.Phone || "",
       expiry_date: localExpireDate,
-      company_name: doc?.ExtUserPtr?.Company || "",
+      company_name: doc?.ExtUserPtr?.Company || doc?.ExtUserPtr?.company || "",
       signing_url: signPdf
     };
     const subject =
@@ -659,8 +746,12 @@ const TemplatesReport = (props) => {
     // Try multiple paths to find the email address, same logic as display in UI
     const recipientEmailRaw = 
       userDetails?.Email || 
+      userDetails?.email ||
       user?.email || 
-      user?.signerPtr?.Email ||
+      user?.Email ||
+      user?.signerPtr?.Email || 
+      user?.signerPtr?.email ||
+      getSignerEmail(user, doc?.Signers) ||
       "";
     
     // Trim and validate email
@@ -757,7 +848,7 @@ const TemplatesReport = (props) => {
     };
 
     // Add optional fields only if they have valid values (matching forwarding approach)
-    const senderEmail = doc?.ExtUserPtr?.Email;
+    const senderEmail = doc?.ExtUserPtr?.Email || doc?.ExtUserPtr?.email;
     if (senderEmail && typeof senderEmail === 'string' && senderEmail.trim()) {
       emailData.from = senderEmail.trim();
       emailData.replyto = senderEmail.trim();
@@ -815,8 +906,25 @@ const TemplatesReport = (props) => {
     }
   };
   const fetchUserStatus = (user, doc) => {
-    const email = user.email ? user.email : user.signerPtr.Email;
-    const audit = doc?.AuditTrail?.find((x) => x.UserPtr.Email === email);
+    // Extract email - try multiple sources
+    const email = 
+      user?.email || 
+      user?.Email || 
+      user?.signerPtr?.Email || 
+      user?.signerPtr?.email ||
+      getSignerEmail(user, doc?.Signers) ||
+      "";
+    
+    // Find audit entry - handle both old and new UserPtr formats
+    const audit = doc?.AuditTrail?.find((x) => 
+      x.UserPtr?.Email === email ||
+      x.UserPtr?.email === email ||
+      x.userPtr?.Email === email ||
+      x.userPtr?.email === email ||
+      x.UserPtr?.objectId === user?.signerObjId ||
+      x.UserPtr?.UserId?.objectId === user?.signerObjId ||
+      x.userPtr?.objectId === user?.signerObjId
+    );
 
     return (
       <div className="flex flex-row gap-2 justify-center items-center">

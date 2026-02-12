@@ -270,6 +270,19 @@ export const contactService = {
       }
       throw error;
     }
+  },
+
+  /**
+   * Get signers (search contacts by name/email for signer selection)
+   * Replaces: Parse.Cloud.run('getSigners', { search })
+   * @param {string} search - Search query (name or email)
+   * @returns {Promise<Array>} Array of contacts matching search
+   */
+  getSigners: async (search = '') => {
+    const response = await apiClient.get('/contacts/signers', {
+      params: { search }
+    });
+    return response.data;
   }
 };
 
